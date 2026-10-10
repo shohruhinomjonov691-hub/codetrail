@@ -1,0 +1,18 @@
+# dependencies and build output
+node_modules/
+dist/
+coverage/
+
+# local secrets — never commit
+.env
+.env.*
+!.env.example
+
+# snapshot / chunk artifacts and cloned mirrors
+data/
+*.jsonl
+
+# OS / editor
+.DS_Store
+.vscode/
+.idea/

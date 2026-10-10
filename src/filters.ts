@@ -1,7 +1,7 @@
 import { isSafeRepoPath } from './paths.js';
 
 /** Bump when filtering behaviour changes: it is part of every snapshot id. */
-export const FILTER_VERSION = 1;
+export const FILTER_VERSION = 2;
 
 export const FILTER_LIMITS = {
 	/** Files larger than this are not indexed. */
@@ -150,7 +150,8 @@ export function classifyPath(path: string, projectExcludes: readonly RegExp[] = 
 	return null;
 }
 
-const utf8 = new TextDecoder('utf-8', { fatal: true });
+// ignoreBOM: keep a leading U+FEFF so decoded text maps 1:1 onto the blob bytes.
+const utf8 = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true });
 
 /** Content decision for a blob that passed the path filter. Returns the decoded text when indexable. */
 export function classifyContent(bytes: Buffer): { reason: ExcludeReason } | { text: string } {

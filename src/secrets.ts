@@ -6,7 +6,7 @@
  * - high: unambiguous credential formats → the whole snapshot is BLOCKED.
  * - medium: heuristic assignments → that file is excluded from the snapshot.
  */
-export const SECRET_SCANNER_VERSION = 1;
+export const SECRET_SCANNER_VERSION = 2;
 
 export type Confidence = 'high' | 'medium';
 
@@ -18,8 +18,30 @@ interface Detector {
 	accept?: (value: string) => boolean;
 }
 
-const PLACEHOLDER =
-	/(your|example|sample|dummy|placeholder|changeme|change_me|replace|redacted|xxxx|\*\*\*|<[^>]*>|\$\{|\{\{|process\.env|import\.meta\.env|test|fake|mock|todo)/i;
+/**
+ * A value is ignored only when the WHOLE value is a recognisable placeholder:
+ * a template/variable reference, a run of filler characters, or a placeholder
+ * word. Substrings never count — "Str0ngTestPassw0rd9" is not a placeholder.
+ */
+const EXACT_PLACEHOLDER = new RegExp(
+	'^(?:' +
+		[
+			'<[^<>]{1,64}>', // <password>
+			'\\$\\{[A-Za-z0-9_.:-]{1,64}\\}', // ${DB_PASSWORD}
+			'\\$[A-Z_][A-Z0-9_]{0,63}', // $DB_PASSWORD
+			'\\{\\{\\s*[A-Za-z0-9_.-]{1,64}\\s*\\}\\}', // {{TOKEN}}
+			'%[A-Z0-9_]{1,64}%', // %TOKEN%
+			'([xX*.#0])\\1{3,}', // xxxx, ****, ....
+			'(?:your|my)[-_ ]?(?:api[-_ ]?key|access[-_ ]?key|secret|password|token|key|pass)(?:[-_ ]?here)?',
+			'(?:api[-_]?key|secret|password|passwd|pass|pwd|token|user|username|changeme|example|placeholder|dummy|redacted|null|undefined|none|todo|fixme|test|sample)(?:[-_]?here)?',
+		].join('|') +
+		')$',
+	'i',
+);
+
+export function isExactPlaceholder(value: string): boolean {
+	return EXACT_PLACEHOLDER.test(value);
+}
 
 function entropy(value: string): number {
 	const counts = new Map<string, number>();
@@ -46,7 +68,7 @@ const DETECTORS: readonly Detector[] = [
 		name: 'credential-url',
 		confidence: 'high',
 		pattern: /\b(?:mongodb(?:\+srv)?|postgres(?:ql)?|mysql|redis|rediss|amqps?|https?|ftp):\/\/[^\s:/@'"`]+:([^\s@'"`/]+)@[^\s'"`]+/g,
-		accept: (password) => !PLACEHOLDER.test(password) && !/^(password|pass|pwd|user|secret)$/i.test(password),
+		accept: (password) => !isExactPlaceholder(password),
 	},
 	{
 		name: 'jwt',
@@ -58,7 +80,7 @@ const DETECTORS: readonly Detector[] = [
 		confidence: 'medium',
 		pattern:
 			/\b[A-Za-z0-9_]*(?:password|passwd|pwd|secret|api[_-]?key|access[_-]?key|auth[_-]?token|access[_-]?token|refresh[_-]?token|client[_-]?secret|private[_-]?key|token)[A-Za-z0-9_]*["']?\s*[:=]\s*["'`]([^"'`\s]{12,})["'`]/gi,
-		accept: (value) => !PLACEHOLDER.test(value) && entropy(value) >= 3.5 && /\d/.test(value) && /[A-Za-z]/.test(value),
+		accept: (value) => !isExactPlaceholder(value) && entropy(value) >= 3.5 && /\d/.test(value) && /[A-Za-z]/.test(value),
 	},
 ];
 

@@ -6,7 +6,9 @@ import { CodeTrailError } from './errors.js';
 import { catFileBatch, runGit } from './git.js';
 import { canonicalJson, hashParts, sha256Hex } from './hash.js';
 import { assertId, assertSnapshotId, isFullSha } from './ids.js';
-import { resolveCommit, syncMirror } from './mirror.js';
+import { cloneToQuarantine, discardStaged, resolveCommit, sweepStaleStaging, type StagedSource } from './mirror.js';
+import { LOCK_DEFAULTS, withLock } from './lock.js';
+import { normalizeGithubUrl, resolveLocalSource } from './sources.js';
 import { classifyContent, classifyPath, FILTER_LIMITS, filterConfigFingerprint, globToRegExp, type ExcludeReason } from './filters.js';
 import { Registry, type ProjectRecord } from './registry.js';
 import { scannerFingerprint, scanText, type Confidence } from './secrets.js';
@@ -151,9 +153,10 @@ function writeJsonAtomic(path: string, value: unknown): void {
 
 /**
  * Creates an immutable snapshot for a project: every source pinned to an exact
- * commit, read from a bare mirror (never a working tree), filtered, secret
- * scanned and chunked. Nothing is written for a blocked snapshot except a
- * report with paths, detector names and counts.
+ * commit, read from a quarantined bare clone (never a working tree), filtered,
+ * secret scanned and chunked. Nothing is written for a blocked snapshot except a
+ * report with paths, detector names and counts. Runs under a per-project
+ * cross-process lock; quarantined clones are always deleted afterwards.
  */
 export async function createSnapshot(
 	config: RuntimeConfig,
@@ -161,19 +164,45 @@ export async function createSnapshot(
 	refs: Record<string, string> = {},
 	now: () => Date = () => new Date(),
 ): Promise<SnapshotResult> {
-	const project = new Registry(config.dataDir).getProject(projectId);
-	if (project.sources.length === 0) throw new CodeTrailError('USAGE', 'Project has no sources');
-	for (const sourceId of Object.keys(refs)) {
-		if (!project.sources.some((s) => s.id === sourceId)) throw new CodeTrailError('UNKNOWN_SOURCE', `Unknown source: ${sourceId}`);
-	}
+	assertId('project', projectId);
+	return withLock(join(config.dataDir, 'locks'), `snapshot-${projectId}`, LOCK_DEFAULTS.snapshot, async () => {
+		const project = new Registry(config.dataDir).getProject(projectId);
+		if (project.sources.length === 0) throw new CodeTrailError('USAGE', 'Project has no sources');
+		for (const sourceId of Object.keys(refs)) {
+			if (!project.sources.some((s) => s.id === sourceId)) throw new CodeTrailError('UNKNOWN_SOURCE', `Unknown source: ${sourceId}`);
+		}
+		// Re-validate every source against the current configuration before reading anything.
+		const locations = project.sources.map((source) => {
+			const current = source.kind === 'local' ? resolveLocalSource(source.location, config.localRoots) : normalizeGithubUrl(source.location);
+			if (current !== source.location) throw new CodeTrailError('UNSAFE_SOURCE', `Source ${source.id} no longer resolves to its registered location`);
+			return current;
+		});
+		sweepStaleStaging(config.dataDir, projectId);
+		const staged: StagedSource[] = [];
+		try {
+			const resolved: Resolved[] = [];
+			for (const [i, source] of project.sources.entries()) {
+				const clone = await cloneToQuarantine(config.dataDir, projectId, source.id, locations[i] as string, source.kind === 'local');
+				staged.push(clone);
+				const ref = refs[source.id] ?? source.defaultRef;
+				resolved.push({ source, gitDir: clone.gitDir, ref, commit: await resolveSourceCommit(clone.gitDir, ref) });
+			}
+			return await buildSnapshot(config, project, resolved, now);
+		} finally {
+			discardStaged(staged);
+		}
+	});
+}
 
-	const resolved: { source: ProjectRecord['sources'][number]; gitDir: string; ref: string; commit: string }[] = [];
-	for (const source of project.sources) {
-		const gitDir = await syncMirror(config.dataDir, projectId, source);
-		const ref = refs[source.id] ?? source.defaultRef;
-		resolved.push({ source, gitDir, ref, commit: await resolveSourceCommit(gitDir, ref) });
-	}
+interface Resolved {
+	source: ProjectRecord['sources'][number];
+	gitDir: string;
+	ref: string;
+	commit: string;
+}
 
+async function buildSnapshot(config: RuntimeConfig, project: ProjectRecord, resolved: Resolved[], now: () => Date): Promise<SnapshotResult> {
+	const projectId = project.id;
 	const cfgHash = configHash(project);
 	const snapshotId = hashParts([projectId, ...resolved.map((r) => `${r.source.id}@${r.commit}`), cfgHash]).slice(0, 24);
 	const root = snapshotsRoot(config.dataDir, projectId);

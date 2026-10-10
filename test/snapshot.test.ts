@@ -236,22 +236,32 @@ describe('git invocation', () => {
 });
 
 describe('git retry', () => {
-	it('retries a failing read and succeeds on a later attempt', async () => {
-		const { withRetry } = await import('../src/git.js');
+	it('retries only retryable errors, with backoff, and stops at the attempt limit', async () => {
+		const { withRetry, GitError, isTransientGitFailure } = await import('../src/git.js');
+		const transient = new GitError('clone', { exitCode: null, signal: 'SIGBUS', transient: true, attempts: 1 });
+		const permanent = new GitError('clone', { exitCode: 128, signal: null, transient: false, attempts: 1 });
 		let calls = 0;
 		let cleaned = 0;
 		const value = await withRetry(
 			3,
 			async () => {
 				calls++;
-				if (calls < 3) throw new Error('transient');
+				if (calls < 3) throw transient;
 				return 'ok';
 			},
-			() => cleaned++,
+			{ beforeRetry: () => cleaned++, baseMs: 1 },
 		);
-		expect(value).toBe('ok');
-		expect(calls).toBe(3);
-		expect(cleaned).toBe(2);
-		await expect(withRetry(2, async () => Promise.reject(new Error('always')))).rejects.toThrow('always');
+		expect([value, calls, cleaned]).toEqual(['ok', 3, 2]);
+		calls = 0;
+		await expect(withRetry(3, async () => (calls++, Promise.reject(permanent)), { baseMs: 1 })).rejects.toBe(permanent);
+		expect(calls).toBe(1);
+		calls = 0;
+		await expect(withRetry(2, async () => (calls++, Promise.reject(transient)), { baseMs: 1 })).rejects.toBe(transient);
+		expect(calls).toBe(2);
+		await expect(withRetry(3, async () => Promise.reject(new Error('EACCES')), { baseMs: 1 })).rejects.toThrow('EACCES');
+		expect(isTransientGitFailure(null, 'SIGBUS', '')).toBe(true);
+		expect(isTransientGitFailure(128, null, 'fatal: git upload-pack: git-pack-objects died with error.')).toBe(true);
+		expect(isTransientGitFailure(128, null, "fatal: could not read '/x': Permission denied")).toBe(false);
+		expect(isTransientGitFailure(128, null, 'fatal: not a git repository')).toBe(false);
 	});
 });

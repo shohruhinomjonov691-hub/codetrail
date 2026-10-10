@@ -1,7 +1,7 @@
 import { isAbsolute, resolve } from 'node:path';
 
 export interface RuntimeConfig {
-	/** Root for registry, git mirrors and snapshot artifacts. */
+	/** Root for registry, locks, quarantined clones and snapshot artifacts. */
 	dataDir: string;
 	/** Absolute directories a local source must resolve inside. Empty = local sources disabled. */
 	localRoots: string[];

@@ -1,4 +1,4 @@
-export const CHUNKER_VERSION = 3;
+export const CHUNKER_VERSION = 4;
 
 /** Hard limits every emitted chunk respects. */
 export const CHUNK_LIMITS = {

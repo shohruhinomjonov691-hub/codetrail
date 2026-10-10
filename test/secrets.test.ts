@@ -28,7 +28,7 @@ describe('secret scanner', () => {
 			"memberPassword: string;",
 			"const url = 'mongodb://localhost:27017/gotrip';",
 			"const url = 'mongodb://user:<password>@host/db';",
-			"const secret = 'changeme12345';",
+			"const secret = 'your-secret-here';",
 			"if (!process.env.SECRET_TOKEN) missing.push('SECRET_TOKEN');",
 			"const TOKEN_NOT_EXIST = 'Token does not exist';",
 			"accessToken = await this.authService.createToken(response);",

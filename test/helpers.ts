@@ -1,10 +1,11 @@
 import { execFileSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, readdirSync, readFileSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 
+/** Real path (macOS tmpdir is behind the /var → /private/var symlink, and sources are stored as real paths). */
 export function tempDir(prefix: string): string {
-	return mkdtempSync(join(tmpdir(), `codetrail-${prefix}-`));
+	return realpathSync(mkdtempSync(join(tmpdir(), `codetrail-${prefix}-`)));
 }
 
 export function git(cwd: string, ...args: string[]): string {

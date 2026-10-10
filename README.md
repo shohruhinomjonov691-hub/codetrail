@@ -7,17 +7,19 @@ CodeTrail is a codebase RAG for TypeScript/JavaScript projects. The goal is to a
 ## What stage B does
 
 1. **Projects and sources.** A project groups one or more sources. Example: a frontend and a backend repository. Each source is either a local Git repository or a public GitHub repository URL.
-2. **Exact-commit snapshots.** Each source is pinned to a full commit SHA and read from a bare mirror under `data/mirrors/`. The source repository's working tree, index and refs are never read or modified. Uncommitted and untracked files are never indexed.
+2. **Exact-commit snapshots from a quarantined clone.** Each source is pinned to a full commit SHA. It is read from a bare clone in a unique staging directory under `data/quarantine/<project>/`. That clone is deleted when the run ends: after success, after a blocked snapshot and after an error. Raw Git history therefore never becomes a persistent or served artifact, and only `data/snapshots/` is meant to be consumed. The source repository's working tree, index and refs are never read or modified. Uncommitted and untracked files are never indexed.
 3. **Safe onboarding.**
    - **Allowlist:** `.ts .tsx .mts .cts .js .jsx .mjs .cjs .json .md .mdx .graphql .gql .yml .yaml`.
    - **Denylist:** `.env*`, keys and certificates, `.npmrc`, credential files, lockfiles, `node_modules/`, build output, `uploads/`, `vendor/`, `.agents/`, `.claude/`, IDE folders, `*.min.js`, `*.d.ts`, logs and dumps.
    - **Content checks:** files over 512 KB, binary content, invalid UTF-8, lines over 2000 chars and minified files are excluded.
    - **Never indexed:** symlinks and submodules.
    - **Path validation:** paths with `..`, absolute paths, backslashes or control characters are rejected.
+   - **Local repositories:** the repository path must stay inside `CODETRAIL_LOCAL_ROOTS`. So must its real git dir, its common dir (worktrees), its object store, any object alternates and any symlinked object files. This is checked when the source is registered and again before every snapshot. With no roots configured, local sources are refused.
    - **Reasons recorded:** every excluded file is listed in the manifest with its reason.
 4. **Secret scan before anything is persisted.**
    - **High-confidence detectors** block the whole snapshot. They cover private keys, AWS, GitHub, OpenAI, Anthropic, Google, Slack, Stripe and npm tokens, URLs with embedded credentials, and JWTs. A blocked snapshot writes only a report.
    - **Medium-confidence detectors** exclude the file. They look for high-entropy `password`/`secret`/`token`/`apiKey` assignments.
+   - **Placeholders:** a value is ignored only if the whole value is a placeholder, such as `<password>`, `${DB_PASSWORD}`, `{{TOKEN}}`, `xxxx` or `your-api-key-here`. Words like `test`, `example` or `mock` inside a real credential do not hide it.
    - **Findings show** only the source, path, detector name and count. Matched values, lines and excerpts are never printed, logged or stored.
 5. **AST chunking.**
    - **TS/JS:** the TypeScript compiler API (parse only) produces chunks for functions, classes, methods, types, enums, variables and module code. Decorators and the doc comments directly above a declaration stay inside its chunk.
@@ -28,7 +30,12 @@ CodeTrail is a codebase RAG for TypeScript/JavaScript projects. The goal is to a
    - **Snapshot id:** `snapshot_id = sha256(project_id, source_id@commit…, config hash)`. The config hash covers the filters, scanner and chunker versions and the project excludes.
    - **Chunk id:** each chunk id is a hash of project, source, commit, path and line range.
    - **No overwrites:** an existing snapshot is never overwritten. A new commit produces a new snapshot next to the old one.
-   - **Exact text:** every chunk's `text` is exactly lines `start_line..end_line` of the committed file.
+   - **Exact text:** every chunk's `text` is exactly lines `start_line..end_line` of the committed file. A UTF-8 BOM and CRLF line endings are kept as they are.
+   - **Coverage:** every non-blank line that is not only closing punctuation lands in some chunk. This includes comments after the last member of a large class.
+7. **Concurrency.**
+   - **Snapshots:** snapshot creation holds a per-project cross-process lock. Parallel runs wait (timeout 10 min), then report `exists`.
+   - **Registry:** registry updates run as a locked read–modify–write (timeout 10 s).
+   - **Stale locks:** a lock is stale when its owner pid is dead on this host, or when another host's lock is older than the stale window. Stale locks are broken under a separate guard, so a fresh lock is never deleted. A waiter that times out fails with `LOCK_TIMEOUT` and never removes the lock.
 
 ## Usage
 
@@ -64,7 +71,7 @@ npm run cli -- snapshot show gotrip <snapshot_id>
 
 | Variable | Purpose |
 | --- | --- |
-| `CODETRAIL_DATA_DIR` | Where the registry, mirrors and snapshots are written. Default `./data` (git-ignored). |
+| `CODETRAIL_DATA_DIR` | Where the registry, locks, quarantined clones and snapshots are written. Default `./data` (git-ignored). |
 | `CODETRAIL_LOCAL_ROOTS` | Colon-separated absolute directories. A local source must resolve inside one of them after symlinks are followed. If unset, local sources are disabled. |
 
 ### Artifacts
@@ -72,7 +79,8 @@ npm run cli -- snapshot show gotrip <snapshot_id>
 ```text
 data/
   registry.json                         projects and sources
-  mirrors/<project>/<source>.git        bare mirrors (read-only copies)
+  locks/                                cross-process lock files
+  quarantine/<project>/                 per-run bare clones; deleted after each run
   snapshots/<project>/<snapshot_id>/
     manifest.json                       every tree entry: blob, sha256, status, exclusion reason
     chunks.jsonl                        one chunk per line
@@ -89,7 +97,12 @@ data/
 - **Secret scanning:** it is pattern-based and does not guarantee that no secret gets through. The default is to fail closed: a suspected secret blocks the snapshot or excludes the file. An excluded `.env.example` has to be reviewed by hand.
 - **Untrusted content:** repository content (comments, docs) is data, never instructions. Later stages must treat it as untrusted model input (prompt injection).
 - **Out of scope:** automatic edits, pull requests and shell execution.
-- **Known environment issue:** repositories under `~/Desktop` on the development Mac occasionally fail to read with SIGBUS or `pack-objects died`. The objects are intact and `git fsck` is clean. CodeTrail passes `core.packedGitWindowSize=1m` to every git call and retries read-only git operations up to 3 times.
+- **Known environment issue:** repositories under `~/Desktop` on the development Mac occasionally fail to read with SIGBUS or `pack-objects died`. The objects are intact and `git fsck` is clean.
+  - CodeTrail passes `core.packedGitWindowSize=1m` to every git call.
+  - Only known transient failures are retried: SIGBUS/SIGSEGV, `pack-objects died`, early EOF, dropped connections. Retries run up to 3 attempts with 200/400 ms backoff, and each clone attempt uses a fresh staging directory.
+  - Permanent errors run exactly once, for example permission denied, missing repository or bad ref.
+  - Errors carry the exit code or signal. Git's stderr is never printed.
+- **Crash recovery:** a crashed run can leave a staging directory behind. It is removed at the next snapshot of the same project if its owning pid (part of the directory name) is no longer alive.
 
 ## Development
 

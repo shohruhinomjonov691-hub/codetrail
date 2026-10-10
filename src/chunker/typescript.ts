@@ -216,8 +216,19 @@ class Emitter {
 				this.add({ start, end, kind: 'class', symbol, packable: true, node: member, isClass: false }, 'class');
 			}
 		}
-		this.flush(); // the closing brace line is left out when it stands alone
+		// Tail between the last member and the closing brace (trailing comments etc.).
+		const lastMember = members.at(-1);
+		const tailStart = lastMember ? endLineOf(lastMember, this.sf, this.idx) + 1 : firstMemberStart;
+		if (tailStart <= u.end && hasSubstance(this.idx.slice(tailStart, u.end))) {
+			this.add({ start: tailStart, end: u.end, kind: 'class', symbol: className, packable: true, node: cls, isClass: false }, 'class');
+		}
+		this.flush(); // a closing brace line that stands alone is left out
 	}
+}
+
+/** True when text has something besides whitespace and closing punctuation. */
+export function hasSubstance(text: string): boolean {
+	return text.split('\n').some((line) => line.trim().length > 0 && !/^[\s})\];,]*$/.test(line));
 }
 
 function findClassLike(node: ts.Node): ts.ClassLikeDeclaration | null {

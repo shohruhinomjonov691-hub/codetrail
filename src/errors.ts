@@ -16,6 +16,8 @@ export type ErrorCode =
 	| 'GIT_FAILED'
 	| 'SNAPSHOT_BLOCKED'
 	| 'UNKNOWN_SNAPSHOT'
+	| 'LOCK_TIMEOUT'
+	| 'UNSAFE_SOURCE'
 	| 'USAGE';
 
 export class CodeTrailError extends Error {

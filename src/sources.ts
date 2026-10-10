@@ -1,5 +1,5 @@
-import { realpathSync, statSync } from 'node:fs';
-import { isAbsolute, relative, sep } from 'node:path';
+import { existsSync, lstatSync, readdirSync, readFileSync, realpathSync, statSync } from 'node:fs';
+import { isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { CodeTrailError } from './errors.js';
 
 export type SourceKind = 'local' | 'github';
@@ -28,39 +28,104 @@ function isInside(child: string, parent: string): boolean {
 	return rel === '' || (!rel.startsWith('..') && !rel.startsWith(sep) && !isAbsolute(rel));
 }
 
+function realOrNull(path: string): string | null {
+	try {
+		return realpathSync(path);
+	} catch {
+		return null;
+	}
+}
+
+/**
+ * Locates the repository's git dir without running git inside it: a `.git`
+ * directory or symlink, a `gitdir:` file (worktrees/submodules), or a bare repo.
+ */
+function locateGitDir(workTree: string): string | null {
+	const dotGit = join(workTree, '.git');
+	let st;
+	try {
+		st = lstatSync(dotGit);
+	} catch {
+		st = null;
+	}
+	if (st) {
+		if (st.isFile()) {
+			const match = /^gitdir:\s*(.+?)\s*$/m.exec(readFileSync(dotGit, 'utf8'));
+			return match ? realOrNull(resolve(workTree, match[1] as string)) : null;
+		}
+		return realOrNull(dotGit);
+	}
+	return existsSync(join(workTree, 'HEAD')) && existsSync(join(workTree, 'objects')) ? workTree : null;
+}
+
+/** Real paths that git would read objects from: object dirs, alternates and symlinked pack/loose entries. */
+function objectSourcePaths(commonDir: string): { paths: string[]; unsupported: boolean } {
+	const objects = join(commonDir, 'objects');
+	const realObjects = realOrNull(objects);
+	const paths: string[] = realObjects ? [realObjects] : [];
+	let unsupported = existsSync(join(objects, 'info', 'http-alternates'));
+	const alternates = join(objects, 'info', 'alternates');
+	if (existsSync(alternates)) {
+		for (const line of readFileSync(alternates, 'utf8').split('\n')) {
+			const entry = line.trim();
+			if (!entry || entry.startsWith('#')) continue;
+			const real = realOrNull(resolve(objects, entry));
+			if (real) paths.push(real);
+			else unsupported = true;
+		}
+	}
+	const scan = (dir: string, depth: number): void => {
+		let names: string[];
+		try {
+			names = readdirSync(dir);
+		} catch {
+			return;
+		}
+		for (const name of names) {
+			const full = join(dir, name);
+			const st = lstatSync(full);
+			if (st.isSymbolicLink()) {
+				const real = realOrNull(full);
+				if (real) paths.push(real);
+				else unsupported = true;
+			} else if (st.isDirectory() && depth > 0) scan(full, depth - 1);
+		}
+	};
+	scan(objects, 1);
+	return { paths, unsupported };
+}
+
 /**
  * A local source must resolve (after following symlinks) inside one of the
- * operator-configured roots and must be a Git repository. Returns the real path.
+ * operator-configured roots — and so must its git dir, its common dir (for
+ * worktrees), its object store, any object alternates and any symlinked object
+ * files. Returns the real work-tree (or bare repo) path. Called when a source
+ * is registered and again before every snapshot.
  */
 export function resolveLocalSource(input: string, localRoots: readonly string[]): string {
 	if (!isAbsolute(input)) throw new CodeTrailError('INVALID_LOCAL_PATH', 'Local source path must be absolute');
 	if (localRoots.length === 0) {
 		throw new CodeTrailError('LOCAL_PATH_OUTSIDE_ROOTS', 'Local sources are disabled: set CODETRAIL_LOCAL_ROOTS');
 	}
-	let real: string;
-	try {
-		real = realpathSync(input);
-	} catch {
-		throw new CodeTrailError('INVALID_LOCAL_PATH', 'Local source path does not exist');
-	}
-	const realRoots = localRoots.flatMap((root) => {
-		try {
-			return [realpathSync(root)];
-		} catch {
-			return [];
-		}
-	});
-	if (!realRoots.some((root) => isInside(real, root))) {
+	const real = realOrNull(input);
+	if (!real) throw new CodeTrailError('INVALID_LOCAL_PATH', 'Local source path does not exist');
+	const realRoots = localRoots.map(realOrNull).filter((r): r is string => r !== null);
+	const inside = (path: string): boolean => realRoots.some((root) => isInside(path, root));
+	if (!inside(real)) {
 		throw new CodeTrailError('LOCAL_PATH_OUTSIDE_ROOTS', 'Local source path is outside CODETRAIL_LOCAL_ROOTS');
 	}
-	const isRepo = [`${real}/.git`, `${real}/HEAD`].some((candidate) => {
-		try {
-			statSync(candidate);
-			return true;
-		} catch {
-			return false;
+	if (!statSync(real).isDirectory()) throw new CodeTrailError('NOT_A_GIT_REPO', 'Local source path is not a Git repository');
+	const gitDir = locateGitDir(real);
+	if (!gitDir || !existsSync(join(gitDir, 'HEAD'))) throw new CodeTrailError('NOT_A_GIT_REPO', 'Local source path is not a Git repository');
+	const commonFile = join(gitDir, 'commondir');
+	const commonDir = existsSync(commonFile) ? realOrNull(resolve(gitDir, readFileSync(commonFile, 'utf8').trim())) : gitDir;
+	if (!commonDir) throw new CodeTrailError('UNSAFE_SOURCE', 'Repository common dir cannot be resolved');
+	const objects = objectSourcePaths(commonDir);
+	if (objects.unsupported) throw new CodeTrailError('UNSAFE_SOURCE', 'Repository uses unresolvable or HTTP object alternates');
+	for (const path of [gitDir, commonDir, ...objects.paths]) {
+		if (!inside(path)) {
+			throw new CodeTrailError('LOCAL_PATH_OUTSIDE_ROOTS', 'Repository git data resolves outside CODETRAIL_LOCAL_ROOTS');
 		}
-	});
-	if (!isRepo) throw new CodeTrailError('NOT_A_GIT_REPO', 'Local source path is not a Git repository');
+	}
 	return real;
 }

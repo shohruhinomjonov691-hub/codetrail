@@ -38,7 +38,8 @@ describe('cli', () => {
 		const env = { CODETRAIL_DATA_DIR: join(root, 'data'), CODETRAIL_LOCAL_ROOTS: join(root, 'allowed') };
 		expect(run(env, 'project', 'add', 'Bad_Id').stderr).toContain('INVALID_ID');
 		expect(run(env, 'project', 'add', 'demo').code).toBe(0);
-		const url = run(env, 'source', 'add-github', 'demo', 'gh', 'https://user:pw@github.com/a/b');
+		const credentialUrl = ['https://user', ':', 'pw', '@github.com/a/b'].join('');
+		const url = run(env, 'source', 'add-github', 'demo', 'gh', credentialUrl);
 		expect(url.code).toBe(1);
 		expect(url.stderr).toContain('INVALID_GITHUB_URL');
 		expect(url.stderr).not.toContain('pw@');

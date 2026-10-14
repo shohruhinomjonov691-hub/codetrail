@@ -50,8 +50,8 @@ Abstention (not counted in recall) — top-1 scores vs answerable questions:
 | T17 | abstention | abst. (absence 0) | abst. (absence 0) | abst. (absence 0) |
 | T18 | doc-vs-code | 1 / 1/2 (+1 opt) | 1 / 1/2 (+1 opt) | 1 / 1/2 (+1 opt) |
 
-Reference scans (deterministic snapshot scan, not a retrieval metric):
+Identifier occurrences (syntactic token scan of the snapshot's included code files; not binding-aware, not runtime usage; not a retrieval metric):
 
-| Question | Identifier | Source | Usages outside the declaration | Expected | Result |
-| --- | --- | --- | --- | --- | --- |
-| T16 | `START_CONVERSATION` | frontend | 0 (none) | 0 | pass |
+| Question | Identifier | Source | Declaration token | Occurrences besides it | Expected | Result |
+| --- | --- | --- | --- | --- | --- | --- |
+| T16 | `START_CONVERSATION` | frontend | apollo/user/mutation.ts:414:14 | 0 (none) | 0 | pass |

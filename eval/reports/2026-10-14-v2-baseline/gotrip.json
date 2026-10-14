@@ -1340,10 +1340,16 @@
   "referenceScans": [
     {
       "id": "T16",
+      "kind": "identifier-occurrences",
       "identifier": "START_CONVERSATION",
       "source_id": "frontend",
-      "expect_usages": 0,
-      "usages": [],
+      "declaration": {
+        "path": "apollo/user/mutation.ts",
+        "line": 414,
+        "column": 14
+      },
+      "expect_occurrences": 0,
+      "occurrences": [],
       "passed": true
     }
   ]

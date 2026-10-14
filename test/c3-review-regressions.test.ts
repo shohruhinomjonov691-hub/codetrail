@@ -113,7 +113,7 @@ describe('P2-3 — CLI writes no report on a snapshot mismatch', () => {
 
 describe('P2-2 — required / alternative / optional evidence in the repository fixtures', () => {
 	const fx = (name: string) => loadFixture(join(ROOT, 'eval', `${name}.tuning.json`)) as unknown as {
-		questions: { id: string; type: string; required?: { path: string; anchor: string }[][]; optional?: { path: string; anchor: string }[]; reference_scan?: { identifier: string; expect_usages: number } }[];
+		questions: { id: string; type: string; required?: { path: string; anchor: string }[][]; optional?: { path: string; anchor: string }[]; reference_scan?: { identifier: string; expect_occurrences: number } }[];
 	};
 
 	it('K4: the timeout implementation is required, the error class is optional', () => {
@@ -124,7 +124,7 @@ describe('P2-2 — required / alternative / optional evidence in the repository 
 
 	it('T16: declaration presence is not a usage proof — a reference scan is declared', () => {
 		const t16 = fx('gotrip').questions.find((q) => q.id === 'T16');
-		expect(t16?.reference_scan).toMatchObject({ identifier: 'START_CONVERSATION', expect_usages: 0 });
+		expect(t16?.reference_scan).toMatchObject({ identifier: 'START_CONVERSATION', expect_occurrences: 0 });
 		expect(t16?.optional?.map((e) => e.path)).toContain('apps/gotrip-api/src/components/message/message.resolver.ts');
 	});
 });

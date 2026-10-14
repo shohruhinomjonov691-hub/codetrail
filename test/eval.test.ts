@@ -77,18 +77,26 @@ describe('metrics (hand-computed, anchor-line scoring)', () => {
 	});
 });
 
-describe('reference scan', () => {
+describe('identifier-occurrence scan', () => {
 	const c = (path: string, start: number, text: string, source_id = 'fe'): ChunkRecord => ({ path, start_line: start, end_line: start + text.split('\n').length - 1, text, source_id } as ChunkRecord);
-	it('counts whole-word uses outside the declaration line in one source', () => {
+	it('counts identifier tokens outside the declaration token in one source', () => {
 		const chunks = [
 			c('m.ts', 10, 'export const START_X = gql`\n  startX\n`;'),
-			c('page.tsx', 1, "import { START_X } from './m';\nconst START_XY = 1;"),
-			c('other.ts', 1, 'START_X', 'be'),
+			c('page.tsx', 1, "import { START_X as S } from './m';\nconst START_XY = 1;"),
+			c('other.ts', 1, 'START_X;', 'be'),
 		];
-		const r = scanReferences(chunks, { identifier: 'START_X', source_id: 'fe', declared_path: 'm.ts', declared_line: 10, expect_usages: 0 });
-		expect(r.usages).toEqual([{ path: 'page.tsx', line: 1 }]); // START_XY is not START_X; other source ignored
+		const r = scanReferences(chunks, { identifier: 'START_X', source_id: 'fe', declared_path: 'm.ts', declared_line: 10, expect_occurrences: 0 });
+		expect(r.kind).toBe('identifier-occurrences');
+		expect(r.declaration).toEqual({ path: 'm.ts', line: 10, column: 14 });
+		expect(r.occurrences).toEqual([{ path: 'page.tsx', line: 1, column: 10 }]); // START_XY is another identifier; other source ignored
 		expect(r.passed).toBe(false);
-		expect(scanReferences(chunks.slice(0, 1), { identifier: 'START_X', source_id: 'fe', declared_path: 'm.ts', declared_line: 10, expect_usages: 0 }).passed).toBe(true);
+		expect(scanReferences(chunks.slice(0, 1), { identifier: 'START_X', source_id: 'fe', declared_path: 'm.ts', declared_line: 10, expect_occurrences: 0 }).passed).toBe(true);
+	});
+
+	it('fails when the declaration token is not found', () => {
+		const r = scanReferences([c('m.ts', 1, 'use(START_X);')], { identifier: 'START_X', source_id: 'fe', declared_path: 'm.ts', declared_line: 1, expect_occurrences: 1 });
+		expect(r.declaration).toBeNull();
+		expect(r.passed).toBe(false);
 	});
 });
 
@@ -120,7 +128,7 @@ describe('expected-range validation against the real snapshot', () => {
 		const good = fixture(c.snapshotId, [
 			{ id: 'Q1', type: 'auth', question: 'How is the token checked?', required: [[ev('src/auth.ts', 1, 4, 'checkToken')]], optional: [ev('src/tour.ts', 1, 1, 'createTour')] },
 			{ id: 'Q2', type: 'abstention', question: 'How is payment handled?', required: [], absence_evidence: [ev('src/tour.ts', 2, 2, 'draft')] },
-			{ id: 'Q3', type: 'unused', question: 'Is createTour used?', required: [[ev('src/tour.ts', 1, 1, 'createTour')]], reference_scan: { identifier: 'createTour', source_id: 'main', declared_path: 'src/tour.ts', declared_line: 1, expect_usages: 0 } },
+			{ id: 'Q3', type: 'unused', question: 'Is createTour used?', required: [[ev('src/tour.ts', 1, 1, 'createTour')]], reference_scan: { identifier: 'createTour', source_id: 'main', declared_path: 'src/tour.ts', declared_line: 1, expect_occurrences: 0 } },
 		]);
 		expect(validateFixture(good, manifest, chunks)).toEqual([]);
 		const bad = fixture(c.snapshotId, [
@@ -148,7 +156,7 @@ describe('expected-range validation against the real snapshot', () => {
 			'B7: answerable question needs at least one required group',
 			'B10: required group 1 is empty',
 			'B11 optional main:src/auth.ts:L1-1: anchor "nope-not-here" not found in range',
-			'B12: reference_scan declaration line does not contain checkToken',
+			'B12: reference_scan expects one declaration of checkToken at src/auth.ts:2, found 0',
 			'B7: duplicate id',
 			'missing anchor',
 			'B9: unknown type bogus',
@@ -185,7 +193,7 @@ describe('evaluation runner (fake local embedding server)', () => {
 		const result = await runEvaluation(c.cfg, 'app', c.snapshotId, fx, recipe, { modes: ['bm25', 'vector', 'hybrid'], k: 8, provider });
 		expect(result.questions).toEqual({ total: 4, answerable: 3, abstention: 1 });
 		expect(result.scoring).toBe('anchor-line/required-groups v2');
-		expect(result.referenceScans).toEqual([{ id: 'QU', identifier: 'createTour', source_id: 'main', expect_usages: 0, usages: [], passed: true }]);
+		expect(result.referenceScans).toEqual([{ id: 'QU', kind: 'identifier-occurrences', identifier: 'createTour', source_id: 'main', declaration: { path: 'src/tour.ts', line: 1, column: 17 }, expect_occurrences: 0, occurrences: [], passed: true }]);
 		for (const m of result.modes) {
 			expect(m.overall.n).toBe(3);
 			expect(m.abstention.n).toBe(1);
@@ -193,7 +201,7 @@ describe('evaluation runner (fake local embedding server)', () => {
 		}
 		expect(result.perQuestion.filter((q) => q.id === 'QA').every((q) => q.score === null)).toBe(true);
 		expect(renderMarkdown(result)).toContain('| hybrid | 1.000 |');
-		expect(renderMarkdown(result)).toContain('| QU | `createTour` | main | 0 (none) | 0 | pass |');
+		expect(renderMarkdown(result)).toContain('| QU | `createTour` | main | src/tour.ts:1:17 | 0 (none) | 0 | pass |');
 		// a fixture that does not match the snapshot is refused
 		const wrong = fixture(c.snapshotId, [{ id: 'X', type: 'auth', question: 'q', required: [[ev('src/auth.ts', 1, 2, 'notthere')]] }]);
 		await expect(runEvaluation(c.cfg, 'app', c.snapshotId, wrong, recipe, { modes: ['bm25'], k: 8 })).rejects.toMatchObject({ code: 'USAGE' });

@@ -162,7 +162,10 @@ This evaluation measures **retrieval only**; no answers are generated. The numbe
   - Evidence Recall@8: satisfied required groups divided by all required groups. Optional evidence is reported but never counted in the denominator.
   - MRR@8: reciprocal rank of the first chunk that satisfies any required group.
   - Abstention questions are kept out of the recall numbers; their top-1 scores are reported separately.
-- **"Is X used?" questions** (T16) also get a **reference scan**: a deterministic whole-word scan of the snapshot for uses outside the declaration. It is reported apart from retrieval. Finding a declaration is not evidence of usage. For T16 the scan finds 0 uses of `START_CONVERSATION` (expected 0).
+- **"Is X used?" questions** (T16) also get an **identifier-occurrence scan**, reported apart from retrieval.
+  - **How it works:** it uses the TypeScript parser over the snapshot's included code files. Every `Identifier` token with exactly that name counts as a separate occurrence, except the one declaration token named by the fixture. `START_X`, `START_X$` and `$START_X` are different identifiers. Comments, string and template text and JSX text are not counted, while expressions inside `${…}` and `{…}` are.
+  - **What it is not:** this is a syntactic token count. It is not binding-aware semantic reference analysis, and it does not prove runtime usage. Excluded files (for example generated code or `node_modules`) are not scanned.
+  - **T16 result:** in snapshot `14bcc5ca…` (frontend source, 195 included code files), `START_CONVERSATION` has its declaration token at `apollo/user/mutation.ts:414:14` and 0 other occurrences (expected 0). This says nothing about files outside that snapshot.
 - **Command:**
   ```bash
   npm run cli -- eval gotrip <snapshot_id> eval/gotrip.tuning.json --mode all --k 8 --out eval/reports/<date>

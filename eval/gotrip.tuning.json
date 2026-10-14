@@ -557,7 +557,7 @@
         "source_id": "frontend",
         "declared_path": "apollo/user/mutation.ts",
         "declared_line": 414,
-        "expect_usages": 0
+        "expect_occurrences": 0
       }
     },
     {

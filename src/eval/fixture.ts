@@ -1,6 +1,8 @@
 import { readFileSync } from 'node:fs';
 import { CodeTrailError } from '../errors.js';
 import type { ChunkRecord, Manifest } from '../snapshot.js';
+import { isValidIdentifier, occurrencesInSource } from './identifiers.js';
+import { declarationToken, expectedOccurrences } from './reference-scan.js';
 
 export const QUESTION_TYPES = ['locate', 'flow', 'auth', 'config', 'error', 'partial', 'unused', 'doc-vs-code', 'abstention'] as const;
 export type QuestionType = (typeof QUESTION_TYPES)[number];
@@ -20,14 +22,19 @@ export interface Evidence {
 	anchor: string;
 }
 
-/** Deterministic snapshot scan for "is X used?" questions — reported apart from retrieval. */
+/**
+ * Identifier-occurrence scan for "is X used?" questions — a syntactic token count
+ * reported apart from retrieval (not binding-aware, not a runtime-usage proof).
+ */
 export interface ReferenceScan {
 	identifier: string;
 	source_id: string;
-	/** The declaration itself, which is not a usage. */
+	/** The declaration token (excluded from the count) is the declaration name on this line. */
 	declared_path: string;
 	declared_line: number;
-	expect_usages: number;
+	expect_occurrences?: number;
+	/** Legacy name for expect_occurrences. */
+	expect_usages?: number;
 }
 
 export interface EvalQuestion {
@@ -150,10 +157,14 @@ export function validateFixture(fx: EvalFixture, manifest: Manifest, chunks: Chu
 		(q.absence_evidence ?? []).forEach((e) => checkEvidence(q, e, 'absence'));
 		if (q.reference_scan) {
 			const r = q.reference_scan;
-			if (!/^[A-Za-z_$][\w$]*$/.test(r.identifier)) problems.push(`${q.id}: reference_scan identifier is not an identifier`);
-			const decl = lines.get(`${r.source_id}\u0000${r.declared_path}`)?.get(r.declared_line) ?? '';
-			if (!new RegExp(`\\b${r.identifier.replace(/\$/g, '\\$')}\\b`).test(decl)) problems.push(`${q.id}: reference_scan declaration line does not contain ${r.identifier}`);
-			if (!Number.isInteger(r.expect_usages) || r.expect_usages < 0) problems.push(`${q.id}: reference_scan expect_usages must be a non-negative integer`);
+			if (!isValidIdentifier(r.identifier)) problems.push(`${q.id}: reference_scan identifier is not a JavaScript identifier`);
+			else {
+				// Same tokenization as the scanner: exactly one declaration-name token on the declared line.
+				const decl = declarationToken(occurrencesInSource(chunks, r.source_id, r.identifier), r);
+				if (decl.length !== 1) problems.push(`${q.id}: reference_scan expects one declaration of ${r.identifier} at ${r.declared_path}:${r.declared_line}, found ${decl.length}`);
+			}
+			const expect = expectedOccurrences(r);
+			if (!Number.isInteger(expect) || expect < 0) problems.push(`${q.id}: reference_scan expect_occurrences must be a non-negative integer`);
 		}
 	}
 	return problems;

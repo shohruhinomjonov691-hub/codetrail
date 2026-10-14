@@ -49,7 +49,7 @@ export interface EvalResult {
 	questions: { total: number; answerable: number; abstention: number };
 	modes: ModeSummary[];
 	perQuestion: QuestionResult[];
-	/** "Is X used?" answers from a deterministic snapshot scan — separate from retrieval metrics. */
+	/** Identifier-occurrence scans for "is X used?" questions — separate from retrieval metrics. */
 	referenceScans: (ReferenceScanResult & { id: string })[];
 }
 
@@ -182,13 +182,14 @@ export function renderMarkdown(r: EvalResult): string {
 	}
 	if (r.referenceScans.length > 0) {
 		out.push('');
-		out.push('Reference scans (deterministic snapshot scan, not a retrieval metric):');
+		out.push('Identifier occurrences (syntactic token scan of the snapshot\'s included code files; not binding-aware, not runtime usage; not a retrieval metric):');
 		out.push('');
-		out.push('| Question | Identifier | Source | Usages outside the declaration | Expected | Result |');
-		out.push('| --- | --- | --- | --- | --- | --- |');
+		out.push('| Question | Identifier | Source | Declaration token | Occurrences besides it | Expected | Result |');
+		out.push('| --- | --- | --- | --- | --- | --- | --- |');
 		for (const s of r.referenceScans) {
-			const where = s.usages.map((u) => `${u.path}:${u.line}`).join(', ') || 'none';
-			out.push(`| ${s.id} | \`${s.identifier}\` | ${s.source_id} | ${s.usages.length} (${where}) | ${s.expect_usages} | ${s.passed ? 'pass' : 'FAIL'} |`);
+			const where = s.occurrences.map((u) => `${u.path}:${u.line}:${u.column}`).join(', ') || 'none';
+			const decl = s.declaration ? `${s.declaration.path}:${s.declaration.line}:${s.declaration.column}` : 'not found';
+			out.push(`| ${s.id} | \`${s.identifier}\` | ${s.source_id} | ${decl} | ${s.occurrences.length} (${where}) | ${s.expect_occurrences} | ${s.passed ? 'pass' : 'FAIL'} |`);
 		}
 	}
 	return out.join('\n') + '\n';

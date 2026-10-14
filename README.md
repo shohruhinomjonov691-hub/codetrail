@@ -192,8 +192,18 @@ v2 results. The reports were regenerated on the schema-2 snapshots (GoTrip `d75a
 
 - **Target missed.** The target was hybrid Evidence Recall@8 ≥ 0.80; v2 gives 0.656 (GoTrip) and 0.700 (ky).
 - **Abstention.** Retrieval scores alone cannot separate unanswerable questions (see the per-report abstention tables). Abstention has to be decided at answer time (stage D), with citation checks.
-- **Role-slots experiment (2026-10-15, not a default):** `--selection role-slots` (search) / `--mode hybrid-role` (eval) keeps the hybrid ranking but takes at most `k - floor(k/4)` implementation chunks (6 of 8) and `floor(k/4)` test/doc/data chunks (2 of 8) in rank order, filling empty slots by rank. Roles come from generic path/language rules (`src/retrieval/role.ts`). One predefined variant, same fixtures/k/indexes/scoring: hybrid Recall@8 GoTrip 0.656 → 0.688, ky 0.700 → 0.800; no question got worse. It stays opt-in because doc/test/config questions could lose evidence and the tuning set barely covers them. Details: `eval/reports/2026-10-15-role-slots/`.
+- **Role-slots experiment (2026-10-15, not a default):** `--selection role-slots` (search) / `--mode hybrid-role` (eval) keeps the hybrid ranking but takes at most `k - floor(k/4)` implementation chunks (6 of 8) and `floor(k/4)` test/doc/data chunks (2 of 8) in rank order, filling empty slots by rank. Roles come from generic path/language rules (`src/retrieval/role.ts`). One predefined variant, same fixtures/k/indexes/scoring: hybrid Recall@8 GoTrip 0.656 → 0.688, ky 0.700 → 0.800; no question got worse. **The 0.80 target is still missed for GoTrip (0.688, even with role-slots)**; ky reaches 0.800 only with role-slots. It stays opt-in (the default selection is `rank`) because doc/test/config questions could lose evidence and the tuning set barely covers them. Details: `eval/reports/2026-10-15-role-slots/`.
 - **Reports:** `eval/reports/2026-10-14-v2-baseline/` and `eval/reports/2026-10-14-v2-tuned/`. The earlier `eval/reports/2026-10-14-{baseline,tuned}/` use the superseded v1 scoring (line overlap, every expected item required). They are kept for history and must not be compared with v2.
+
+## Local LLM feasibility (D0, 2026-10-15)
+
+D0 was a benchmark only; there is no answer generation in CodeTrail yet. Qwen2.5-Coder-1.5B-Instruct Q4_K_M (pinned in `models.lock.json` → `generation`, loopback llama-server via `scripts/gen-server.sh`) answered 13 tuning questions from the default retrieval. Each claim was graded by hand:
+
+- **0/13** answers met the rule "every claim correct and validly cited";
+- 0/3 unanswerable questions were abstained on;
+- only 1 answer cited anything, and that answer was wrong.
+
+On the development Mac (not a server), with about 5.9k context tokens, the first token took about 10 s and the server used about 1.3 GB RSS. **The model is not sufficient**, and D1 must enforce citations and abstention mechanically. Details: `eval/reports/2026-10-15-d0-llm/`.
 
 ## Support boundaries
 

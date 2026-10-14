@@ -1,0 +1,151 @@
+{
+  "project": "ky",
+  "snapshot": "6b9989f36c61fdaf73687db7",
+  "k": 8,
+  "selection": "rank",
+  "evidenceTokenBudget": 6000,
+  "maxOutputTokens": 384,
+  "server": {
+    "n_ctx": 8192,
+    "model": "/Users/shokhrukhbekinomjonov/Developer/codetrail-models/models/qwen2.5-coder-1.5b-instruct-q4_k_m.gguf",
+    "build": "b11606-1b70350c9"
+  },
+  "system": "You answer questions about a codebase using ONLY the numbered source excerpts given by the user.\nRules:\n1. End every factual sentence with a citation of the excerpt and file lines that support it, like [S2:L14] or [S2:L14-L18]. Use only line numbers shown in that excerpt.\n2. Do not use outside knowledge. Do not mention files, functions, settings or behaviour that the excerpts do not show.\n3. If the excerpts do not contain enough to answer, reply exactly: INSUFFICIENT_EVIDENCE: followed by one sentence on what is missing.\n4. Be brief: at most 6 sentences.",
+  "results": [
+    {
+      "id": "K2",
+      "type": "config",
+      "question": "Which HTTP methods and status codes are retried by default, and how many times?",
+      "requiredInContext": [
+        false,
+        false,
+        false
+      ],
+      "excerpts": [
+        "S1 readme.md:L300-L414",
+        "S2 source/types/retry.ts:L21-L139",
+        "S3 test/retry-decisions.ts:L176-L285",
+        "S4 test/retry.ts:L304-L398"
+      ],
+      "droppedForBudget": 4,
+      "evidenceTokens": 5510,
+      "promptTokens": 5683,
+      "outputTokens": 177,
+      "ttftMs": 9779,
+      "totalMs": 13088,
+      "promptPerSecond": 566.75258850099,
+      "genPerSecond": 53.17405287494882,
+      "serverPeakRssMb": 1302,
+      "abstained": false,
+      "citations": [],
+      "answer": "The HTTP methods and status codes that are retried by default are GET, PUT, HEAD, DELETE, OPTIONS, TRACE, and QUERY. The default retry limit is 2, and the default retry methods are GET, PUT, HEAD, DELETE, OPTIONS, TRACE, and QUERY. The default retry status codes are 408, 413, 429, 500, 502, 503, and 504. The default retry after status codes are 413, 429, and 503. The default retry backoff limit is Infinity, and the default retry delay is 0.3 * (2 ** (attemptCount - 1)) * 1000. The default retry jitter is undefined, and the default retry retry on timeout is false."
+    },
+    {
+      "id": "K3",
+      "type": "flow",
+      "question": "How are Retry-After and rate-limit headers used when retrying?",
+      "requiredInContext": [
+        true
+      ],
+      "excerpts": [
+        "S1 source/core/retry-timing.ts:L25-L49",
+        "S2 readme.md:L300-L414",
+        "S3 test/retry-timing.ts:L1-L110",
+        "S4 test/retry.ts:L738-L843"
+      ],
+      "droppedForBudget": 4,
+      "evidenceTokens": 5695,
+      "promptTokens": 5865,
+      "outputTokens": 360,
+      "ttftMs": 10168,
+      "totalMs": 16965,
+      "promptPerSecond": 563.067995209247,
+      "genPerSecond": 52.809129418700934,
+      "serverPeakRssMb": 1302,
+      "abstained": false,
+      "citations": [],
+      "answer": "To determine how Retry-After and rate-limit headers are used when retrying, we need to analyze the code snippets provided.\n\n1. **Retry-After Header Usage**:\n   - The `getRetryTimingHeader` function checks for the presence of `Retry-After` headers in the response headers.\n   - If `Retry-After` is present, it returns a `RetryTimingHeader` object with the value and whether to allow a timestamp.\n   - If `Retry-After` is not present, it checks for `RateLimit-Reset` headers.\n   - If `RateLimit-Reset` is present, it returns a `RetryTimingHeader` object with the value and whether to allow a timestamp.\n   - If neither `Retry-After` nor `RateLimit-Reset` is present, it returns `undefined`.\n\n2. **Rate-Limit Header Usage**:\n   - The `getRetryTimingHeader` function also checks for `X-RateLimit-Retry-After` and `X-RateLimit-Reset` headers.\n   - If `X-RateLimit-Retry-After` is present, it returns a `RetryTimingHeader` object with the value and whether to allow a timestamp.\n   - If `X-RateLimit-Reset` is present, it returns a `RetryTimingHeader` object with the value and whether to allow a timestamp.\n   - If neither `X-RateLimit-Retry-After` nor `X-RateLimit-Reset` is present, it returns `undefined`.\n\nIn summary, Retry-After and rate-limit headers are used to determine the delay before retrying a request. They are checked in the `getRetryTimingHeader` function to determine the appropriate delay based on the presence of the headers."
+    },
+    {
+      "id": "K4",
+      "type": "locate",
+      "question": "How is the request timeout implemented and which error does it raise?",
+      "requiredInContext": [
+        true
+      ],
+      "excerpts": [
+        "S1 readme.md:L415-L470",
+        "S2 source/utils/timeout.ts:L10-L46",
+        "S3 test/retry.ts:L1063-L1175",
+        "S4 test/retry.ts:L4762-L4872",
+        "S5 readme.md:L1312-L1410"
+      ],
+      "droppedForBudget": 3,
+      "evidenceTokens": 5839,
+      "promptTokens": 6009,
+      "outputTokens": 77,
+      "ttftMs": 10489,
+      "totalMs": 11934,
+      "promptPerSecond": 559.2787821609143,
+      "genPerSecond": 52.599523835889485,
+      "serverPeakRssMb": 1300,
+      "abstained": false,
+      "citations": [],
+      "answer": "The request timeout is implemented in the `timeout` function, which is called when the `totalTimeout` is reached. It uses `setTimeout` to set a timer that cancels the request if it exceeds the timeout. The `timeout` function throws a `TimeoutError` if the request times out.\n\nThe error that is raised when the request times out is `TimeoutError`."
+    },
+    {
+      "id": "K10",
+      "type": "config",
+      "question": "What is the default request timeout?",
+      "requiredInContext": [
+        true
+      ],
+      "excerpts": [
+        "S1 source/utils/timeout.ts:L10-L46",
+        "S2 test-d/timeout-options.ts:L1-L8",
+        "S3 source/core/Ky.ts:L548-L588",
+        "S4 readme.md:L300-L414",
+        "S5 readme.md:L415-L470",
+        "S6 source/utils/normalize.ts:L25-L35",
+        "S7 test/main.ts:L1462-L1559",
+        "S8 source/core/Ky.ts:L217-L218"
+      ],
+      "droppedForBudget": 0,
+      "evidenceTokens": 5266,
+      "promptTokens": 5433,
+      "outputTokens": 32,
+      "ttftMs": 9263,
+      "totalMs": 9855,
+      "promptPerSecond": 571.3577053565892,
+      "genPerSecond": 52.39114893789621,
+      "serverPeakRssMb": 1302,
+      "abstained": false,
+      "citations": [],
+      "answer": "The default request timeout is set to 10000 milliseconds. This can be configured using the `timeout` option in the Ky request options."
+    },
+    {
+      "id": "KA1",
+      "type": "abstention",
+      "question": "How does ky cache responses in IndexedDB?",
+      "requiredInContext": [],
+      "excerpts": [
+        "S1 readme.md:L1732-L1829",
+        "S2 readme.md:L1830-L1948",
+        "S3 test/context.ts:L204-L319",
+        "S4 readme.md:L471-L558"
+      ],
+      "droppedForBudget": 4,
+      "evidenceTokens": 5523,
+      "promptTokens": 5688,
+      "outputTokens": 103,
+      "ttftMs": 9795,
+      "totalMs": 11722,
+      "promptPerSecond": 566.3280003432291,
+      "genPerSecond": 52.92221420318083,
+      "serverPeakRssMb": 1275,
+      "abstained": false,
+      "citations": [],
+      "answer": "KY caches responses in IndexedDB by using the `ky.cache` property. This property is an instance of `IDBDatabase` that is used to store the responses from the server. The responses are stored in the database with a unique key that is generated based on the request URL and the request method. When a request is made, the response is stored in the database and can be retrieved later using the same key. This allows for efficient retrieval of responses and reduces the number of requests made to the server."
+    }
+  ]
+}

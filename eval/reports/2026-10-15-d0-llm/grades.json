@@ -1,0 +1,253 @@
+{
+  "grader": "manual (Claude Code), each claim checked against the snapshot file store; 2026-10-15",
+  "success_rule": "success = every claim correct AND supported by a valid citation to the given excerpts; abstention questions succeed only with INSUFFICIENT_EVIDENCE",
+  "rows": [
+    {
+      "id": "T1",
+      "corpus": "gotrip",
+      "kind": "flow",
+      "grade": "incorrect (fabricated)",
+      "note": "The required evidence was not in the context. The model invented a form flow and a FAQ_DATA lookup instead of abstaining.",
+      "requiredInContext": [
+        false,
+        false
+      ],
+      "citations": 0,
+      "validCitations": 0,
+      "abstained": false,
+      "promptTokens": 5965,
+      "outputTokens": 89,
+      "droppedForBudget": 5,
+      "ttftMs": 10965,
+      "totalMs": 12695,
+      "serverPeakRssMb": 1390
+    },
+    {
+      "id": "T4",
+      "corpus": "gotrip",
+      "kind": "flow/auth",
+      "grade": "content-correct, uncited",
+      "note": "Token comes from the authorization header (auth.guard.ts:14) and is checked via authService.retrieveAuthMember (L18): right. No citations.",
+      "requiredInContext": [
+        true,
+        true
+      ],
+      "citations": 0,
+      "validCitations": 0,
+      "abstained": false,
+      "promptTokens": 5437,
+      "outputTokens": 30,
+      "droppedForBudget": 1,
+      "ttftMs": 9264,
+      "totalMs": 9820,
+      "serverPeakRssMb": 1339
+    },
+    {
+      "id": "T8",
+      "corpus": "gotrip",
+      "kind": "config",
+      "grade": "incorrect",
+      "note": "The code throws at boot in production (main.ts:40-41; env.validation.ts:20 rejects startup). The model says CORS falls back to allowing everything, then repeats a sentence until the output limit.",
+      "requiredInContext": [
+        true
+      ],
+      "citations": 0,
+      "validCitations": 0,
+      "abstained": false,
+      "promptTokens": 6047,
+      "outputTokens": 384,
+      "droppedForBudget": 1,
+      "ttftMs": 10563,
+      "totalMs": 17873,
+      "serverPeakRssMb": 1342
+    },
+    {
+      "id": "T11",
+      "corpus": "gotrip",
+      "kind": "config (retrieval missed)",
+      "grade": "incorrect/unsupported",
+      "note": "Does not name the model and invents a \"model property in a component\". DEFAULT_MODEL (L14) and OPENAI_MODEL (L60) were not in the context, so it should have abstained.",
+      "requiredInContext": [
+        false,
+        false
+      ],
+      "citations": 0,
+      "validCitations": 0,
+      "abstained": false,
+      "promptTokens": 5039,
+      "outputTokens": 37,
+      "droppedForBudget": 1,
+      "ttftMs": 8414,
+      "totalMs": 9085,
+      "serverPeakRssMb": 1293
+    },
+    {
+      "id": "T12",
+      "corpus": "gotrip",
+      "kind": "locate",
+      "grade": "partial",
+      "note": "batchRollback at 01:00:00 is right (batch.controller.ts:17). batchTopTours actually runs at 01:00:20 (L28), and batchTopAgents at 01:00:40 (L39) is missing although it was in the excerpt.",
+      "requiredInContext": [
+        true
+      ],
+      "citations": 0,
+      "validCitations": 0,
+      "abstained": false,
+      "promptTokens": 6101,
+      "outputTokens": 59,
+      "droppedForBudget": 4,
+      "ttftMs": 10701,
+      "totalMs": 11850,
+      "serverPeakRssMb": 1295
+    },
+    {
+      "id": "T14",
+      "corpus": "gotrip",
+      "kind": "abstention",
+      "grade": "incorrect (no abstention)",
+      "note": "Summarises docs and wrongly says booking/payment routes were added; the docs say they were removed.",
+      "requiredInContext": [],
+      "citations": 0,
+      "validCitations": 0,
+      "abstained": false,
+      "promptTokens": 6140,
+      "outputTokens": 384,
+      "droppedForBudget": 3,
+      "ttftMs": 10768,
+      "totalMs": 18228,
+      "serverPeakRssMb": 1296
+    },
+    {
+      "id": "T17",
+      "corpus": "gotrip",
+      "kind": "abstention",
+      "grade": "incorrect (outside knowledge)",
+      "note": "Gives a generic Stripe SDK refund example. Nothing like it exists in the repo or the excerpts.",
+      "requiredInContext": [],
+      "citations": 0,
+      "validCitations": 0,
+      "abstained": false,
+      "promptTokens": 5073,
+      "outputTokens": 189,
+      "droppedForBudget": 0,
+      "ttftMs": 8487,
+      "totalMs": 11982,
+      "serverPeakRssMb": 1299
+    },
+    {
+      "id": "T18",
+      "corpus": "gotrip",
+      "kind": "doc-vs-code",
+      "grade": "incorrect, valid citation",
+      "note": "Says the module was removed, citing [S1:L47-L79]. That same excerpt says it was re-added (DECISIONS.md:62-66), and destination.module.ts was excerpt S5. The citation is mechanically valid but supports a wrong claim.",
+      "requiredInContext": [
+        false,
+        true
+      ],
+      "citations": 1,
+      "validCitations": 1,
+      "abstained": false,
+      "promptTokens": 6040,
+      "outputTokens": 53,
+      "droppedForBudget": 3,
+      "ttftMs": 10540,
+      "totalMs": 11528,
+      "serverPeakRssMb": 1302
+    },
+    {
+      "id": "K2",
+      "corpus": "ky",
+      "kind": "config (retrieval missed normalize.ts)",
+      "grade": "content-correct, uncited",
+      "note": "Every value matches normalize.ts:17-35. They are supported by the @default docs of source/types/retry.ts, which was excerpt S2. No citations.",
+      "requiredInContext": [
+        false,
+        false,
+        false
+      ],
+      "citations": 0,
+      "validCitations": 0,
+      "abstained": false,
+      "promptTokens": 5683,
+      "outputTokens": 177,
+      "droppedForBudget": 4,
+      "ttftMs": 9779,
+      "totalMs": 13088,
+      "serverPeakRssMb": 1302
+    },
+    {
+      "id": "K3",
+      "corpus": "ky",
+      "kind": "flow",
+      "grade": "partial (1 false claim)",
+      "note": "The header order Retry-After \u2192 RateLimit-Reset \u2192 X-RateLimit-Retry-After \u2192 X-RateLimit-Reset matches retry-timing.ts:25-49. It wrongly says undefined is returned when the first two are absent, omits X-Rate-Limit-Reset, and does not explain how the delay is applied.",
+      "requiredInContext": [
+        true
+      ],
+      "citations": 0,
+      "validCitations": 0,
+      "abstained": false,
+      "promptTokens": 5865,
+      "outputTokens": 360,
+      "droppedForBudget": 4,
+      "ttftMs": 10168,
+      "totalMs": 16965,
+      "serverPeakRssMb": 1302
+    },
+    {
+      "id": "K4",
+      "corpus": "ky",
+      "kind": "locate",
+      "grade": "partial (1 false claim)",
+      "note": "setTimeout, abort and TimeoutError are right (timeout.ts:22-27). Saying it runs \"when totalTimeout is reached\" is wrong: it is the per-attempt options.timeout, and totalTimeout is a separate option.",
+      "requiredInContext": [
+        true
+      ],
+      "citations": 0,
+      "validCitations": 0,
+      "abstained": false,
+      "promptTokens": 6009,
+      "outputTokens": 77,
+      "droppedForBudget": 3,
+      "ttftMs": 10489,
+      "totalMs": 11934,
+      "serverPeakRssMb": 1300
+    },
+    {
+      "id": "K10",
+      "corpus": "ky",
+      "kind": "config",
+      "grade": "content-correct, uncited",
+      "note": "10000 ms (Ky.ts:218, readme L407), configurable through the timeout option. No citations.",
+      "requiredInContext": [
+        true
+      ],
+      "citations": 0,
+      "validCitations": 0,
+      "abstained": false,
+      "promptTokens": 5433,
+      "outputTokens": 32,
+      "droppedForBudget": 0,
+      "ttftMs": 9263,
+      "totalMs": 9855,
+      "serverPeakRssMb": 1302
+    },
+    {
+      "id": "KA1",
+      "corpus": "ky",
+      "kind": "abstention",
+      "grade": "incorrect (fabricated)",
+      "note": "Invents a ky.cache IndexedDB feature; ky has no such feature and nothing in the excerpts mentions one.",
+      "requiredInContext": [],
+      "citations": 0,
+      "validCitations": 0,
+      "abstained": false,
+      "promptTokens": 5688,
+      "outputTokens": 103,
+      "droppedForBudget": 4,
+      "ttftMs": 9795,
+      "totalMs": 11722,
+      "serverPeakRssMb": 1275
+    }
+  ]
+}

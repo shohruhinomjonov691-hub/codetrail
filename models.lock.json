@@ -52,5 +52,31 @@
     "license": "Apache-2.0",
     "dims": 1024,
     "maxTokens": 4096
+  },
+  "generation": {
+    "name": "Qwen2.5-Coder-1.5B-Instruct",
+    "repo": "Qwen/Qwen2.5-Coder-1.5B-Instruct-GGUF",
+    "revision": "f86cb2c1fa58255f8052cc32aeede1b7482d4361",
+    "file": "qwen2.5-coder-1.5b-instruct-q4_k_m.gguf",
+    "url": "https://huggingface.co/Qwen/Qwen2.5-Coder-1.5B-Instruct-GGUF/resolve/f86cb2c1fa58255f8052cc32aeede1b7482d4361/qwen2.5-coder-1.5b-instruct-q4_k_m.gguf",
+    "sha256": "cc324af070c2ecbfd324a30884d2f951a7ff756aba85cb811a6ec436933bb046",
+    "size": 1117320768,
+    "quant": "Q4_K_M",
+    "license": "Apache-2.0",
+    "contextLength": 32768,
+    "status": "D0 feasibility benchmark only (2026-10-15); not used by any CodeTrail command.",
+    "serverArgs": [
+      "-c",
+      "8192",
+      "-np",
+      "1",
+      "--cache-ram",
+      "0",
+      "--host",
+      "127.0.0.1",
+      "--port",
+      "8082",
+      "--no-webui"
+    ]
   }
 }

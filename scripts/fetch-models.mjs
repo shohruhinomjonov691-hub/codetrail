@@ -11,7 +11,7 @@ import { pipeline } from 'node:stream/promises';
 
 const lock = JSON.parse(readFileSync(resolve('models.lock.json'), 'utf8'));
 const dir = resolve(process.env.CODETRAIL_MODELS_DIR || 'models');
-const platform = process.argv[2] || (process.platform === 'darwin' ? 'macos-arm64' : 'ubuntu-x64');
+const platform = (process.argv[2] && !process.argv[2].startsWith('--') ? process.argv[2] : undefined) || (process.platform === 'darwin' ? 'macos-arm64' : 'ubuntu-x64');
 
 const sha256 = (path) =>
 	new Promise((ok, fail) => {
@@ -44,3 +44,7 @@ const runtimeDir = join(dir, 'runtime', lock.runtime.release);
 mkdirSync(runtimeDir, { recursive: true });
 execFileSync('tar', ['-xzf', archive, '-C', runtimeDir]);
 await fetchVerified(lock.embedding.url, join(dir, 'models', lock.embedding.file), lock.embedding.sha256);
+// The D0 generation benchmark model is fetched only on request: node scripts/fetch-models.mjs <platform> --generation
+if (lock.generation && process.argv.includes('--generation')) {
+	await fetchVerified(lock.generation.url, join(dir, 'models', lock.generation.file), lock.generation.sha256);
+}

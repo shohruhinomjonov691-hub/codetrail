@@ -1,0 +1,243 @@
+{
+  "project": "gotrip",
+  "snapshot": "d75aaec921284e35893092a7",
+  "k": 8,
+  "selection": "rank",
+  "evidenceTokenBudget": 6000,
+  "maxOutputTokens": 384,
+  "server": {
+    "n_ctx": 8192,
+    "model": "/Users/shokhrukhbekinomjonov/Developer/codetrail-models/models/qwen2.5-coder-1.5b-instruct-q4_k_m.gguf",
+    "build": "b11606-1b70350c9"
+  },
+  "system": "You answer questions about a codebase using ONLY the numbered source excerpts given by the user.\nRules:\n1. End every factual sentence with a citation of the excerpt and file lines that support it, like [S2:L14] or [S2:L14-L18]. Use only line numbers shown in that excerpt.\n2. Do not use outside knowledge. Do not mention files, functions, settings or behaviour that the excerpts do not show.\n3. If the excerpts do not contain enough to answer, reply exactly: INSUFFICIENT_EVIDENCE: followed by one sentence on what is missing.\n4. Be brief: at most 6 sentences.",
+  "results": [
+    {
+      "id": "T1",
+      "type": "flow",
+      "question": "When a traveller sends an inquiry to a guide from a tour page, what happens in the frontend and the backend?",
+      "requiredInContext": [
+        false,
+        false
+      ],
+      "excerpts": [
+        "S1 libs/components/cs/Faq.tsx:L50-L148",
+        "S2 public/locales/ko/common.json:L361-L480",
+        "S3 docs/ai/COMPLETED_TASKS.md:L412-L505"
+      ],
+      "droppedForBudget": 5,
+      "evidenceTokens": 5787,
+      "promptTokens": 5965,
+      "outputTokens": 89,
+      "ttftMs": 10965,
+      "totalMs": 12695,
+      "promptPerSecond": 544.4566915507258,
+      "genPerSecond": 50.87937483124526,
+      "serverPeakRssMb": 1390,
+      "abstained": false,
+      "citations": [],
+      "answer": "When a traveller sends an inquiry to a guide from a tour page, the frontend handles the inquiry by displaying a form with fields for the inquiry subject, content, and any additional details required by the guide. The backend processes the inquiry by sending it to the guide's contact information, which is stored in the `FAQ_DATA` object. The backend also handles the response from the guide, which is displayed to the traveller on the tour page."
+    },
+    {
+      "id": "T4",
+      "type": "auth",
+      "question": "Where does AuthGuard get the token from and how is it verified?",
+      "requiredInContext": [
+        true,
+        true
+      ],
+      "excerpts": [
+        "S1 apps/gotrip-api/src/components/auth/guards/auth.guard.ts:L6-L30",
+        "S2 apps/gotrip-api/src/components/auth/guards/roles.guard.spec.ts:L1-L73",
+        "S3 apps/gotrip-api/src/components/auth/guards/without.guard.ts:L5-L31",
+        "S4 apps/gotrip-api/src/components/auth/guards/roles.guard.ts:L7-L38",
+        "S5 apps/gotrip-api/src/components/conversation/conversation.resolver.spec.ts:L16-L101",
+        "S6 docs/ai/COMPLETED_TASKS.md:L123-L158",
+        "S7 libs/__tests__/messagingSocket.test.js:L48-L142"
+      ],
+      "droppedForBudget": 1,
+      "evidenceTokens": 5264,
+      "promptTokens": 5437,
+      "outputTokens": 30,
+      "ttftMs": 9264,
+      "totalMs": 9820,
+      "promptPerSecond": 571.7361432837962,
+      "genPerSecond": 52.16033727953265,
+      "serverPeakRssMb": 1339,
+      "abstained": false,
+      "citations": [],
+      "answer": "AuthGuard gets the token from the `authorization` header in the request. The token is verified by calling `this.authService.retrieveAuthMember(token)`."
+    },
+    {
+      "id": "T8",
+      "type": "config",
+      "question": "What happens in production when ALLOWED_ORIGINS is not set?",
+      "requiredInContext": [
+        true
+      ],
+      "excerpts": [
+        "S1 apps/gotrip-api/src/main.ts:L11-L57",
+        "S2 README.md:L98-L117",
+        "S3 libs/config.ts:L5-L26",
+        "S4 apps/gotrip-api/src/libs/env.validation.ts:L1-L27",
+        "S5 apps/gotrip-api/src/components/conversation/conversation.resolver.spec.ts:L102-L197",
+        "S6 apollo/client.ts:L61-L158",
+        "S7 apps/gotrip-api/src/socket/socket.gateway.ts:L36-L109"
+      ],
+      "droppedForBudget": 1,
+      "evidenceTokens": 5874,
+      "promptTokens": 6047,
+      "outputTokens": 384,
+      "ttftMs": 10563,
+      "totalMs": 17873,
+      "promptPerSecond": 559.2251449149117,
+      "genPerSecond": 52.39704869177019,
+      "serverPeakRssMb": 1342,
+      "abstained": false,
+      "citations": [],
+      "answer": "In production, when ALLOWED_ORIGINS is not set, the application fails to enable CORS, which results in the following behavior:\n\n1. **CORS Configuration**: The application uses Helmet to set the Content-Security-Policy (CSP) to `undefined` outside of production. This allows all origins, which is not secure for production environments.\n\n2. **CORS Headers**: The application sets the `Access-Control-Allow-Origin` header to `true` in production, which is not secure either. This header should be set to a comma-separated list of allowed origins to restrict access to the API.\n\n3. **Default CORS Policy**: The application uses Helmet's `crossOriginEmbedderPolicy` and `crossOriginResourcePolicy` to allow cross-origin resources. However, these headers are not set in production, which can lead to security vulnerabilities.\n\n4. **Default CORS Policy**: The application uses Helmet's `crossOriginEmbedderPolicy` and `crossOriginResourcePolicy` to allow cross-origin resources. However, these headers are not set in production, which can lead to security vulnerabilities.\n\n5. **Default CORS Policy**: The application uses Helmet's `crossOriginEmbedderPolicy` and `crossOriginResourcePolicy` to allow cross-origin resources. However, these headers are not set in production, which can lead to security vulnerabilities.\n\n6. **Default CORS Policy**: The application uses Helmet's `crossOriginEmbedderPolicy` and `crossOriginResourcePolicy` to allow cross-origin resources. However, these headers are not set in production, which can lead to security vulnerabilities.\n\n7. **Default CORS Policy**: The application uses Helmet's `crossOriginEmbedderPolicy` and `crossOriginResourcePolicy` to allow cross-origin resources. However, these headers are not set in production, which can lead to security vulnerabilities.\n\n8. **Default CORS Policy**: The application uses Helmet's `crossOriginEmbedder"
+    },
+    {
+      "id": "T11",
+      "type": "config",
+      "question": "Which OpenAI model does the GoTrip AI chat use and how can it be changed?",
+      "requiredInContext": [
+        false,
+        false
+      ],
+      "excerpts": [
+        "S1 libs/components/gotripAI/useGoTripAI.ts:L90-L208",
+        "S2 public/locales/ko/common.json:L1065-L1105",
+        "S3 libs/components/gotripAI/GoTripAI.tsx:L12-L30",
+        "S4 libs/components/gotripAI/types.ts:L46-L59",
+        "S5 docs/ai/COMPLETED_TASKS.md:L747-L770",
+        "S6 apps/gotrip-api/src/components/conversation/providers/openai-chat.provider.ts:L29-L47",
+        "S7 libs/components/gotripAI/GoTripAIProvider.tsx:L6-L10"
+      ],
+      "droppedForBudget": 1,
+      "evidenceTokens": 4862,
+      "promptTokens": 5039,
+      "outputTokens": 37,
+      "ttftMs": 8414,
+      "totalMs": 9085,
+      "promptPerSecond": 582.1751872772542,
+      "genPerSecond": 53.646070052826474,
+      "serverPeakRssMb": 1293,
+      "abstained": false,
+      "citations": [],
+      "answer": "The GoTrip AI chat uses the OpenAI model. To change the model, you would need to update the `model` property in the `OpenAIChatProvider` component."
+    },
+    {
+      "id": "T12",
+      "type": "locate",
+      "question": "What runs every night at 01:00?",
+      "requiredInContext": [
+        true
+      ],
+      "excerpts": [
+        "S1 apps/gotrip-batch/src/batch.controller.ts:L6-L65",
+        "S2 CHANGELOG.md:L116-L161",
+        "S3 pages/cs/index.tsx:L75-L123",
+        "S4 CHANGELOG.md:L208-L226"
+      ],
+      "droppedForBudget": 4,
+      "evidenceTokens": 5933,
+      "promptTokens": 6101,
+      "outputTokens": 59,
+      "ttftMs": 10701,
+      "totalMs": 11850,
+      "promptPerSecond": 557.0577401522487,
+      "genPerSecond": 50.58349809308934,
+      "serverPeakRssMb": 1295,
+      "abstained": false,
+      "citations": [],
+      "answer": "The codebase runs every night at 01:00, as evidenced by the `@Cron` decorator in `batch.controller.ts` that schedules the `batchRollback` and `batchTopTours` functions to run at 01:00 every day."
+    },
+    {
+      "id": "T14",
+      "type": "abstention",
+      "question": "How does booking and payment checkout work?",
+      "requiredInContext": [],
+      "excerpts": [
+        "S1 docs/ai/COMPLETED_TASKS.md:L506-L591",
+        "S2 docs/ai/UX_ARCHITECTURE.md:L517-L564",
+        "S3 docs/ai/COMPLETED_TASKS.md:L67-L130",
+        "S4 docs/ai/COMPLETED_TASKS.md:L649-L706",
+        "S5 skills/user-project/SKILL.md:L1-L29"
+      ],
+      "droppedForBudget": 3,
+      "evidenceTokens": 5975,
+      "promptTokens": 6140,
+      "outputTokens": 384,
+      "ttftMs": 10768,
+      "totalMs": 18228,
+      "promptPerSecond": 557.2614484652586,
+      "genPerSecond": 51.340530748487296,
+      "serverPeakRssMb": 1296,
+      "abstained": false,
+      "citations": [],
+      "answer": "To improve GoTrip travel tour booking frontend UI/UX and responsive design, the following steps were taken:\n\n1. **Backend Mappings**: The frontend was mapped to the backend using the provided `COMPLETED_TASKS.md` file, which included changes to the `booking`, `payment`, `wishlist`, `destination`, and `tour-schedule` modules. These changes included the addition of new routes, DTOs, and GraphQL queries for booking, payment, wishlist, destination, and tour-schedule.\n\n2. **Frontend Mappings**: The frontend was also mapped to the backend using the provided `UX_ARCHITECTURE.md` file, which included the creation of new components and routes for booking, payment, wishlist, destination, and tour-schedule. These changes included the addition of new components and routes for booking, payment, wishlist, destination, and tour-schedule.\n\n3. **Backend Security and Business-Logic Hardening**: The backend was audited and fixed the critical and medium findings, including the removal of upload path traversal / stored XSS, stale-token authorization, WebSocket PII leak, and regex hardening. These changes included the addition of new routes, DTOs, and GraphQL queries for booking, payment, wishlist, destination, and tour-schedule.\n\n4. **Minor Backend Correctness Fixes**: The backend was also corrected to ensure that saved/visited tours no longer include deleted tours, `contactAgent` now requires an ACTIVE tour, and `tourImages` gets `@ArrayNotEmpty()`. These changes included the addition of new routes, DTOs, and GraphQL queries for booking, payment, wishlist, destination, and tour-schedule.\n\n5. **User-Project Skills**: The user-project skills document provided in the `SKILL.md` file focused on improving GoTrip travel tour booking frontend UI/UX and responsive design. The document included the focus on tour catalog layout, tour detail"
+    },
+    {
+      "id": "T17",
+      "type": "abstention",
+      "question": "How do I issue a Stripe refund?",
+      "requiredInContext": [],
+      "excerpts": [
+        "S1 docs/ai/PROMPTS.md:L1-L106",
+        "S2 AGENTS.md:L1-L40",
+        "S3 docs/ai/COMPLETED_TASKS.md:L67-L130",
+        "S4 apollo/admin/mutation.ts:L200-L207",
+        "S5 libs/components/cs/Faq.tsx:L50-L148",
+        "S6 apps/gotrip-api/src/components/conversation/conversation-context.service.ts:L70-L84",
+        "S7 apps/gotrip-api/src/components/testimonial/testimonial.service.ts:L125-L135",
+        "S8 apollo/user/mutation.ts:L443-L449"
+      ],
+      "droppedForBudget": 0,
+      "evidenceTokens": 4905,
+      "promptTokens": 5073,
+      "outputTokens": 189,
+      "ttftMs": 8487,
+      "totalMs": 11982,
+      "promptPerSecond": 581.0864382585048,
+      "genPerSecond": 53.78936029286591,
+      "serverPeakRssMb": 1299,
+      "abstained": false,
+      "citations": [],
+      "answer": "To issue a Stripe refund, you would typically use the Stripe API's refund endpoint. Here's a basic example of how you might do this using the Stripe Node.js library:\n\n```javascript\nconst stripe = require('stripe')('YOUR_STRIPE_SECRET_KEY');\n\nstripe.refunds.create({\n  charge: 'CHARGE_ID',\n  amount: 100, // Amount in cents\n  reason: 'customer_refund',\n  description: 'Refund for customer'\n}, (err, refund) => {\n  if (err) {\n    console.error(err);\n  } else {\n    console.log(refund);\n  }\n});\n```\n\nReplace `'YOUR_STRIPE_SECRET_KEY'` with your actual Stripe secret key and `'CHARGE_ID'` with the ID of the charge you want to refund. This code will create a refund for the specified charge, reducing the balance of the customer's account by the specified amount."
+    },
+    {
+      "id": "T18",
+      "type": "doc-vs-code",
+      "question": "Was the destination module removed from the backend?",
+      "requiredInContext": [
+        false,
+        true
+      ],
+      "excerpts": [
+        "S1 docs/ai/DECISIONS.md:L47-L79",
+        "S2 docs/ai/COMPLETED_TASKS.md:L649-L706",
+        "S3 docs/ai/COMPLETED_TASKS.md:L506-L591",
+        "S4 docs/ai/COMPLETED_TASKS.md:L1-L66",
+        "S5 apps/gotrip-api/src/components/destination/destination.module.ts:L1-L9"
+      ],
+      "droppedForBudget": 3,
+      "evidenceTokens": 5874,
+      "promptTokens": 6040,
+      "outputTokens": 53,
+      "ttftMs": 10540,
+      "totalMs": 11528,
+      "promptPerSecond": 559.8116389549144,
+      "genPerSecond": 52.64100957357745,
+      "serverPeakRssMb": 1302,
+      "abstained": false,
+      "citations": [
+        {
+          "cite": "[S1:L47-L79]",
+          "valid": true
+        }
+      ],
+      "answer": "The destination module was removed from the backend. This can be seen in the [S1:L47-L79] excerpt, which states that the booking, payment, wishlist, destination, and tour-schedule modules were removed from both backend and frontend."
+    }
+  ]
+}

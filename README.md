@@ -2,7 +2,7 @@
 
 CodeTrail is a codebase RAG for TypeScript/JavaScript projects. The goal is to answer questions about a repository with evidence: `source@commit:path:Lx-Ly` citations that can be checked.
 
-**Status: stages B and C1–C2.** Onboarding, exact-commit snapshots, safety filters, AST chunking, a local embedding provider, a per-snapshot index and hybrid (BM25 + vector + RRF) search are implemented. Not built yet: retrieval evaluation, answer generation, the web UI and deployment.
+**Status: stages B, C1–C2 and C3 (retrieval evaluation).** Onboarding, exact-commit snapshots, safety filters, AST chunking, a local embedding provider, a per-snapshot index and hybrid (BM25 + vector + RRF) search are implemented. Not built yet: answer generation, the web UI and deployment.
 
 **Local models only.** Embeddings come from a local `llama-server` (llama.cpp) running Qwen3-Embedding-0.6B. No external AI API is used, and code is never sent to a hosted model.
 
@@ -108,6 +108,7 @@ CODETRAIL_MODELS_DIR=~/Developer/codetrail-models node scripts/fetch-models.mjs 
 CODETRAIL_MODELS_DIR=~/Developer/codetrail-models scripts/embed-server.sh          # loopback only, prompt cache off
 npm run cli -- index  gotrip <snapshot_id>
 npm run cli -- search gotrip <snapshot_id> "where is the tour inquiry sent?" --mode hybrid --k 8
+npm run cli -- eval   gotrip <snapshot_id> eval/gotrip.tuning.json --mode all --k 8 --out eval/reports/<date>
 ```
 
 - **Embedding recipe.**
@@ -146,6 +147,44 @@ npm run cli -- search gotrip <snapshot_id> "where is the tour inquiry sent?" --m
   - At most 2 concurrent requests; batches of 8 texts.
   - Question: at most 1000 characters, and the fully formatted query must fit the recipe's token limit (counted with the server tokenizer before embedding; otherwise `TOKEN_LIMIT`). `k`: 1–20.
 - **Server flags.** Use `--cache-ram 0` on the embedding server. With the default prompt cache, the server's memory footprint on the development Mac grew to 10–11 GB; with the cache off it was about 1 GB, and the vectors were identical.
+
+## Retrieval evaluation (stage C3)
+
+This evaluation measures **retrieval only**; no answers are generated. The numbers are **tuning-set results**: there are few questions, and the defaults were chosen on these same questions. The holdout set was neither written nor read. All timings were measured on the development Mac, not a server.
+
+- **Fixtures:** `eval/gotrip.tuning.json` (GoTrip T1–T18) and `eval/ky.tuning.json` (`sindresorhus/ky`, 10 questions plus 2 abstention).
+  - Every expected range is validated against the evaluated snapshot: the file must be included, the range must fit inside it, and an anchor text must appear inside the range.
+  - Abstention questions have no expected evidence and are kept out of the recall numbers.
+- **Command:**
+  ```bash
+  npm run cli -- eval gotrip <snapshot_id> eval/gotrip.tuning.json --mode all --k 8 --out eval/reports/<date>
+  ```
+- **Metrics (answerable questions only):**
+  - Hit@8: at least one expected range overlaps a retrieved chunk.
+  - Evidence Recall@8: the fraction of expected ranges overlapped.
+  - MRR@8: reciprocal rank of the first overlapping chunk.
+
+Results with the shipped defaults (embedding: Qwen3-Embedding-0.6B Q8_0, llama.cpp b11606):
+
+| Corpus | Mode | Hit@8 | Evidence Recall@8 | MRR@8 |
+| --- | --- | --- | --- | --- |
+| GoTrip (16 + 2) | bm25 | 0.500 | 0.346 | 0.364 |
+| | vector | 0.813 | 0.506 | 0.493 |
+| | **hybrid** | **0.875** | **0.579** | **0.596** |
+| ky (10 + 2) | bm25 | 0.300 | 0.250 | 0.150 |
+| | vector | 0.700 | 0.550 | 0.395 |
+| | **hybrid** | **0.800** | **0.600** | **0.424** |
+
+- **Target missed.** The target was hybrid Evidence Recall@8 ≥ 0.80; the result is 0.58 (GoTrip) and 0.60 (ky).
+- **Tuning (before → after).** A 108-configuration grid was run over BM25 column weights, RRF k, candidate pool size, BM25 stopwords and RRF weights, on tuning questions only.
+  - Hybrid recall: GoTrip 0.496 → 0.579, ky 0.500 → 0.600.
+  - Chosen settings: BM25 weights `[3,3,1,2]` (path, symbol, text, identifiers), RRF k = 30, pool = 100.
+  - Excluding `public/locales/**` from GoTrip did not help (0.579 → 0.558) and was not adopted.
+- **Weakest question types.**
+  - Multi-hop "flow" questions: Evidence Recall@8 is 0.40 on GoTrip. A single question can carry up to 5 evidence ranges.
+  - Single-constant "config" questions, such as the default retry status codes or the default timeout.
+- **Abstention.** Retrieval scores alone cannot separate unanswerable questions. On GoTrip, the top-1 cosine for abstention questions is 0.33–0.54 in hybrid mode and 0.37–0.65 in vector mode, while answerable questions start at 0.36 and 0.44. Abstention therefore has to be decided at answer time (stage D), with citation checks, not by a score threshold alone.
+- **Reports:** `eval/reports/2026-10-14-baseline/` and `eval/reports/2026-10-14-tuned/` contain per-question JSON and Markdown.
 
 ## Support boundaries
 

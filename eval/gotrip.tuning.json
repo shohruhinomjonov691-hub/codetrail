@@ -1,0 +1,449 @@
+{
+  "schema": 1,
+  "project": "gotrip",
+  "snapshot_id": "14bcc5ca5560dc64618b0b87",
+  "split": "tuning",
+  "questions": [
+    {
+      "id": "T1",
+      "type": "flow",
+      "question": "When a traveller sends an inquiry to a guide from a tour page, what happens in the frontend and the backend?",
+      "expected": [
+        {
+          "source_id": "frontend",
+          "path": "pages/tour/detail.tsx",
+          "start_line": 236,
+          "end_line": 247,
+          "anchor": "contactAgentHandler"
+        },
+        {
+          "source_id": "frontend",
+          "path": "apollo/user/mutation.ts",
+          "start_line": 68,
+          "end_line": 75,
+          "anchor": "CONTACT_AGENT"
+        },
+        {
+          "source_id": "backend",
+          "path": "apps/gotrip-api/src/components/notification/notification.resolver.ts",
+          "start_line": 32,
+          "end_line": 40,
+          "anchor": "public async contactAgent"
+        },
+        {
+          "source_id": "backend",
+          "path": "apps/gotrip-api/src/components/notification/notification.service.ts",
+          "start_line": 126,
+          "end_line": 151,
+          "anchor": "public async contactAgent"
+        },
+        {
+          "source_id": "backend",
+          "path": "apps/gotrip-api/src/components/message/message.service.ts",
+          "start_line": 126,
+          "end_line": 130,
+          "anchor": "deliverTourInquiry"
+        }
+      ]
+    },
+    {
+      "id": "T2",
+      "type": "flow",
+      "question": "Which path handles a GoTrip AI message from a visitor who is not logged in, and how is it rate limited?",
+      "expected": [
+        {
+          "source_id": "frontend",
+          "path": "libs/components/gotripAI/useGoTripAI.ts",
+          "start_line": 395,
+          "end_line": 405,
+          "anchor": "sendGoTripAIGuestMessage"
+        },
+        {
+          "source_id": "backend",
+          "path": "apps/gotrip-api/src/components/conversation/conversation.resolver.ts",
+          "start_line": 50,
+          "end_line": 74,
+          "anchor": "GUEST_AI_THROTTLE"
+        },
+        {
+          "source_id": "backend",
+          "path": "apps/gotrip-api/src/components/conversation/gotrip-ai.service.ts",
+          "start_line": 212,
+          "end_line": 220,
+          "anchor": "sendGuestMessage"
+        }
+      ]
+    },
+    {
+      "id": "T3",
+      "type": "flow",
+      "question": "How is a GoTrip AI answer streamed to a logged-in user?",
+      "expected": [
+        {
+          "source_id": "backend",
+          "path": "apps/gotrip-api/src/components/conversation/conversation.resolver.ts",
+          "start_line": 76,
+          "end_line": 89,
+          "anchor": "streamGoTripAIMessage"
+        },
+        {
+          "source_id": "backend",
+          "path": "apps/gotrip-api/src/socket/socket.gateway.ts",
+          "start_line": 106,
+          "end_line": 110,
+          "anchor": "emitToMember"
+        },
+        {
+          "source_id": "frontend",
+          "path": "libs/components/gotripAI/useGoTripAI.ts",
+          "start_line": 290,
+          "end_line": 295,
+          "anchor": "gotripAiStream"
+        }
+      ]
+    },
+    {
+      "id": "T4",
+      "type": "auth",
+      "question": "Where does AuthGuard get the token from and how is it verified?",
+      "expected": [
+        {
+          "source_id": "backend",
+          "path": "apps/gotrip-api/src/components/auth/guards/auth.guard.ts",
+          "start_line": 10,
+          "end_line": 25,
+          "anchor": "bearerToken"
+        },
+        {
+          "source_id": "backend",
+          "path": "apps/gotrip-api/src/components/auth/auth.service.ts",
+          "start_line": 43,
+          "end_line": 44,
+          "anchor": "retrieveAuthMember"
+        },
+        {
+          "source_id": "frontend",
+          "path": "apollo/client.ts",
+          "start_line": 15,
+          "end_line": 16,
+          "anchor": "Authorization"
+        }
+      ]
+    },
+    {
+      "id": "T5",
+      "type": "auth",
+      "question": "Who is allowed to create a tour, and where is that enforced?",
+      "expected": [
+        {
+          "source_id": "backend",
+          "path": "apps/gotrip-api/src/components/tour/tour.resolver.ts",
+          "start_line": 26,
+          "end_line": 34,
+          "anchor": "Roles(MemberType.AGENT)"
+        },
+        {
+          "source_id": "backend",
+          "path": "apps/gotrip-api/src/components/auth/guards/roles.guard.ts",
+          "start_line": 14,
+          "end_line": 28,
+          "anchor": "roles.includes"
+        },
+        {
+          "source_id": "frontend",
+          "path": "libs/components/mypage/AddNewTour.tsx",
+          "start_line": 43,
+          "end_line": 43,
+          "anchor": "CREATE_TOUR"
+        }
+      ]
+    },
+    {
+      "id": "T6",
+      "type": "auth",
+      "question": "Can someone register directly as an ADMIN during signup?",
+      "expected": [
+        {
+          "source_id": "backend",
+          "path": "apps/gotrip-api/src/components/member/member.service.ts",
+          "start_line": 58,
+          "end_line": 66,
+          "anchor": "memberType: MemberType.USER"
+        }
+      ]
+    },
+    {
+      "id": "T7",
+      "type": "flow",
+      "question": "How does a regular user become an agent (guide)?",
+      "expected": [
+        {
+          "source_id": "frontend",
+          "path": "libs/components/mypage/BecomeGuide.tsx",
+          "start_line": 47,
+          "end_line": 69,
+          "anchor": "requestAgentRole"
+        },
+        {
+          "source_id": "backend",
+          "path": "apps/gotrip-api/src/components/member/member.resolver.ts",
+          "start_line": 131,
+          "end_line": 138,
+          "anchor": "requestAgentRole"
+        },
+        {
+          "source_id": "backend",
+          "path": "apps/gotrip-api/src/components/member/member.service.ts",
+          "start_line": 292,
+          "end_line": 327,
+          "anchor": "requestAgentRole"
+        },
+        {
+          "source_id": "backend",
+          "path": "apps/gotrip-api/src/components/member/member.resolver.ts",
+          "start_line": 167,
+          "end_line": 172,
+          "anchor": "approveAgentRequestByAdmin"
+        },
+        {
+          "source_id": "backend",
+          "path": "apps/gotrip-api/src/components/member/member.service.ts",
+          "start_line": 328,
+          "end_line": 340,
+          "anchor": "approveAgentRequestByAdmin"
+        }
+      ]
+    },
+    {
+      "id": "T8",
+      "type": "config",
+      "question": "What happens in production when ALLOWED_ORIGINS is not set?",
+      "expected": [
+        {
+          "source_id": "backend",
+          "path": "apps/gotrip-api/src/libs/env.validation.ts",
+          "start_line": 3,
+          "end_line": 27,
+          "anchor": "ALLOWED_ORIGINS"
+        },
+        {
+          "source_id": "backend",
+          "path": "apps/gotrip-api/src/main.ts",
+          "start_line": 29,
+          "end_line": 44,
+          "anchor": "ALLOWED_ORIGINS"
+        }
+      ]
+    },
+    {
+      "id": "T9",
+      "type": "config",
+      "question": "How is the global GraphQL rate limit configured?",
+      "expected": [
+        {
+          "source_id": "backend",
+          "path": "apps/gotrip-api/src/app.module.ts",
+          "start_line": 20,
+          "end_line": 20,
+          "anchor": "ThrottlerModule.forRoot"
+        },
+        {
+          "source_id": "backend",
+          "path": "apps/gotrip-api/src/app.module.ts",
+          "start_line": 49,
+          "end_line": 49,
+          "anchor": "APP_GUARD"
+        },
+        {
+          "source_id": "backend",
+          "path": "apps/gotrip-api/src/libs/guards/gql-throttler.guard.ts",
+          "start_line": 9,
+          "end_line": 15,
+          "anchor": "GqlThrottlerGuard"
+        }
+      ]
+    },
+    {
+      "id": "T10",
+      "type": "error",
+      "question": "Where do the wrong password and blocked user login errors come from?",
+      "expected": [
+        {
+          "source_id": "backend",
+          "path": "apps/gotrip-api/src/components/member/member.service.ts",
+          "start_line": 75,
+          "end_line": 92,
+          "anchor": "WRONG_PASSWORD"
+        }
+      ]
+    },
+    {
+      "id": "T11",
+      "type": "config",
+      "question": "Which OpenAI model does the GoTrip AI chat use and how can it be changed?",
+      "expected": [
+        {
+          "source_id": "backend",
+          "path": "apps/gotrip-api/src/components/conversation/providers/openai-chat.provider.ts",
+          "start_line": 14,
+          "end_line": 14,
+          "anchor": "DEFAULT_MODEL"
+        },
+        {
+          "source_id": "backend",
+          "path": "apps/gotrip-api/src/components/conversation/providers/openai-chat.provider.ts",
+          "start_line": 60,
+          "end_line": 60,
+          "anchor": "OPENAI_MODEL"
+        }
+      ]
+    },
+    {
+      "id": "T12",
+      "type": "locate",
+      "question": "What runs every night at 01:00?",
+      "expected": [
+        {
+          "source_id": "backend",
+          "path": "apps/gotrip-batch/src/batch.controller.ts",
+          "start_line": 17,
+          "end_line": 26,
+          "anchor": "BATCH_ROLLBACK"
+        },
+        {
+          "source_id": "backend",
+          "path": "apps/gotrip-batch/src/batch.service.ts",
+          "start_line": 19,
+          "end_line": 30,
+          "anchor": "batchRollback"
+        }
+      ]
+    },
+    {
+      "id": "T13",
+      "type": "locate",
+      "question": "What is WithoutGuard for?",
+      "expected": [
+        {
+          "source_id": "backend",
+          "path": "apps/gotrip-api/src/components/auth/guards/without.guard.ts",
+          "start_line": 6,
+          "end_line": 25,
+          "anchor": "WithoutGuard"
+        }
+      ]
+    },
+    {
+      "id": "T14",
+      "type": "abstention",
+      "question": "How does booking and payment checkout work?",
+      "expected": [],
+      "absence_evidence": [
+        {
+          "source_id": "backend",
+          "path": "apps/gotrip-api/src/libs/dto/conversation/context.types.ts",
+          "start_line": 26,
+          "end_line": 31,
+          "anchor": "No Booking"
+        },
+        {
+          "source_id": "backend",
+          "path": "apps/gotrip-api/src/components/conversation/conversation-context.service.ts",
+          "start_line": 219,
+          "end_line": 220,
+          "anchor": "No Booking"
+        },
+        {
+          "source_id": "frontend",
+          "path": "libs/components/mypage/NotificationsCenter.tsx",
+          "start_line": 117,
+          "end_line": 117,
+          "anchor": "no booking module"
+        },
+        {
+          "source_id": "backend",
+          "path": "docs/ai/DECISIONS.md",
+          "start_line": 21,
+          "end_line": 21,
+          "anchor": "Booking workflow is out of scope"
+        }
+      ]
+    },
+    {
+      "id": "T15",
+      "type": "partial",
+      "question": "How does an admin manage the FAQ?",
+      "expected": [
+        {
+          "source_id": "frontend",
+          "path": "pages/_admin/cs/faq.tsx",
+          "start_line": 17,
+          "end_line": 20,
+          "anchor": "FAQ administration unavailable"
+        }
+      ]
+    },
+    {
+      "id": "T16",
+      "type": "unused",
+      "question": "Does the frontend use the START_CONVERSATION mutation?",
+      "expected": [
+        {
+          "source_id": "frontend",
+          "path": "apollo/user/mutation.ts",
+          "start_line": 414,
+          "end_line": 416,
+          "anchor": "START_CONVERSATION"
+        },
+        {
+          "source_id": "backend",
+          "path": "apps/gotrip-api/src/components/message/message.resolver.ts",
+          "start_line": 30,
+          "end_line": 37,
+          "anchor": "startConversation"
+        }
+      ]
+    },
+    {
+      "id": "T17",
+      "type": "abstention",
+      "question": "How do I issue a Stripe refund?",
+      "expected": []
+    },
+    {
+      "id": "T18",
+      "type": "doc-vs-code",
+      "question": "Was the destination module removed from the backend?",
+      "expected": [
+        {
+          "source_id": "backend",
+          "path": "apps/gotrip-api/src/components/destination/destination.resolver.ts",
+          "start_line": 21,
+          "end_line": 30,
+          "anchor": "DestinationResolver"
+        },
+        {
+          "source_id": "backend",
+          "path": "apps/gotrip-api/src/components/components.module.ts",
+          "start_line": 31,
+          "end_line": 31,
+          "anchor": "DestinationModule"
+        },
+        {
+          "source_id": "backend",
+          "path": "docs/ai/DECISIONS.md",
+          "start_line": 49,
+          "end_line": 49,
+          "anchor": "tour-schedule modules were removed"
+        },
+        {
+          "source_id": "backend",
+          "path": "docs/ai/DECISIONS.md",
+          "start_line": 66,
+          "end_line": 66,
+          "anchor": "Re-add `Destination`"
+        }
+      ]
+    }
+  ]
+}

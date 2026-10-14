@@ -7,7 +7,11 @@ import { createSnapshot, listSnapshots, readSnapshot } from './snapshot.js';
 import { normalizeGithubUrl, resolveLocalSource } from './sources.js';
 import { createEmbeddingProvider, embeddingSettings } from './embedding/config.js';
 import { buildIndex, loadIndex } from './retrieval/index.js';
-import { search, type SearchMode } from './retrieval/search.js';
+import { search, type SearchMode, type SearchTuning } from './retrieval/search.js';
+import { loadFixture } from './eval/fixture.js';
+import { renderMarkdown, runEvaluation } from './eval/run.js';
+import { mkdirSync, writeFileSync } from 'node:fs';
+import { join as joinPath } from 'node:path';
 
 const USAGE = `codetrail — exact-commit snapshots and chunking for TS/JS repositories
 
@@ -21,6 +25,8 @@ Usage:
   codetrail snapshot show <project_id> <snapshot_id>
   codetrail index  <project_id> <snapshot_id>
   codetrail search <project_id> <snapshot_id> <question> [--mode bm25|vector|hybrid] [--k <1-20>]
+  codetrail eval   <project_id> <snapshot_id> <fixture.json> [--mode all|bm25|vector|hybrid] [--k 8]
+                   [--bm25-weights p,s,t,i] [--rrf-k n] [--pool n] [--out <dir>]
 
 Environment: CODETRAIL_DATA_DIR (default ./data), CODETRAIL_LOCAL_ROOTS (colon-separated),
 CODETRAIL_EMBED_URL, CODETRAIL_MODELS_DIR, CODETRAIL_PROVIDER_HOSTS (local models only; see .env.example).
@@ -132,6 +138,33 @@ async function main(argv: string[]): Promise<number> {
 		} finally {
 			index.db.close();
 		}
+		return 0;
+	}
+	if (group === 'eval') {
+		const [projectId, snapshotId, fixturePath] = need([action, ...rest].filter((v): v is string => v !== undefined), 3) as [string, string, string];
+		const modeArg = one('mode') ?? 'all';
+		const modes: SearchMode[] = modeArg === 'all' ? ['bm25', 'vector', 'hybrid'] : [modeArg as SearchMode];
+		if (!modes.every((m) => ['bm25', 'vector', 'hybrid'].includes(m))) throw new CodeTrailError('USAGE', '--mode must be all, bm25, vector or hybrid');
+		const tuning: Partial<SearchTuning> = {};
+		const w = one('bm25-weights');
+		if (w) tuning.bm25Weights = w.split(',').map(Number) as unknown as SearchTuning['bm25Weights'];
+		if (one('rrf-k')) tuning.rrfK = Number(one('rrf-k'));
+		if (one('pool')) tuning.candidatePool = Number(one('pool'));
+		const settings = embeddingSettings();
+		const provider = modes.some((m) => m !== 'bm25') ? await createEmbeddingProvider(config, settings) : undefined;
+		const result = await runEvaluation(config, projectId, snapshotId, loadFixture(fixturePath), settings.recipe, {
+			modes,
+			k: Number(one('k') ?? 8),
+			tuning,
+			...(provider ? { provider } : {}),
+		});
+		const out = one('out');
+		if (out) {
+			mkdirSync(out, { recursive: true });
+			writeFileSync(joinPath(out, `${projectId}.json`), JSON.stringify(result, null, 2) + '\n');
+			writeFileSync(joinPath(out, `${projectId}.md`), renderMarkdown(result));
+		}
+		print({ project: result.project, snapshot_id: result.snapshot_id, index_id: result.index_id, k: result.k, tuning: result.tuning, modes: result.modes.map((m) => ({ mode: m.mode, ...m.overall })) });
 		return 0;
 	}
 	process.stderr.write(USAGE + '\n');

@@ -1,0 +1,842 @@
+{
+  "project": "ky",
+  "snapshot_id": "9d5e668f5c4729d890abf890",
+  "fixture_snapshot_id": "9d5e668f5c4729d890abf890",
+  "index_id": "9ab026fb373762c2651c892c",
+  "recipe": {
+    "model": "Qwen3-Embedding-0.6B",
+    "quant": "Q8_0",
+    "sha256": "06507c7b42688469c4e7298b0a1e16deff06caf291cf0a5b278c308249c3e439"
+  },
+  "runtime": "b11606-1b70350c9",
+  "k": 8,
+  "tuning": {
+    "bm25Weights": [
+      2,
+      3,
+      1,
+      1
+    ],
+    "rrfK": 60,
+    "candidatePool": 50
+  },
+  "questions": {
+    "total": 12,
+    "answerable": 10,
+    "abstention": 2
+  },
+  "modes": [
+    {
+      "mode": "bm25",
+      "overall": {
+        "n": 10,
+        "hitAtK": 0.3,
+        "evidenceRecallAtK": 0.25,
+        "mrrAtK": 0.15333333333333332
+      },
+      "byType": {
+        "config": {
+          "n": 2,
+          "hitAtK": 0,
+          "evidenceRecallAtK": 0,
+          "mrrAtK": 0
+        },
+        "error": {
+          "n": 2,
+          "hitAtK": 1,
+          "evidenceRecallAtK": 0.75,
+          "mrrAtK": 0.6666666666666666
+        },
+        "flow": {
+          "n": 2,
+          "hitAtK": 0.5,
+          "evidenceRecallAtK": 0.5,
+          "mrrAtK": 0.1
+        },
+        "locate": {
+          "n": 4,
+          "hitAtK": 0,
+          "evidenceRecallAtK": 0,
+          "mrrAtK": 0
+        }
+      },
+      "abstention": {
+        "n": 2,
+        "top1VectorCosine": {
+          "n": 0,
+          "min": null,
+          "median": null,
+          "max": null
+        },
+        "top1Rrf": {
+          "n": 2,
+          "min": 0.016393,
+          "median": 0.016393,
+          "max": 0.016393
+        },
+        "hitsReturned": [
+          8,
+          8
+        ],
+        "absenceEvidenceFound": [
+          0,
+          0
+        ]
+      },
+      "answerableTop1VectorCosine": {
+        "n": 0,
+        "min": null,
+        "median": null,
+        "max": null
+      }
+    },
+    {
+      "mode": "vector",
+      "overall": {
+        "n": 10,
+        "hitAtK": 0.7,
+        "evidenceRecallAtK": 0.55,
+        "mrrAtK": 0.395
+      },
+      "byType": {
+        "config": {
+          "n": 2,
+          "hitAtK": 0,
+          "evidenceRecallAtK": 0,
+          "mrrAtK": 0
+        },
+        "error": {
+          "n": 2,
+          "hitAtK": 1,
+          "evidenceRecallAtK": 0.5,
+          "mrrAtK": 0.75
+        },
+        "flow": {
+          "n": 2,
+          "hitAtK": 1,
+          "evidenceRecallAtK": 0.75,
+          "mrrAtK": 0.35
+        },
+        "locate": {
+          "n": 4,
+          "hitAtK": 0.75,
+          "evidenceRecallAtK": 0.75,
+          "mrrAtK": 0.4375
+        }
+      },
+      "abstention": {
+        "n": 2,
+        "top1VectorCosine": {
+          "n": 2,
+          "min": 0.536857,
+          "median": 0.5538425,
+          "max": 0.570828
+        },
+        "top1Rrf": {
+          "n": 2,
+          "min": 0.016393,
+          "median": 0.016393,
+          "max": 0.016393
+        },
+        "hitsReturned": [
+          8,
+          8
+        ],
+        "absenceEvidenceFound": [
+          0,
+          0
+        ]
+      },
+      "answerableTop1VectorCosine": {
+        "n": 10,
+        "min": 0.600426,
+        "median": 0.717224,
+        "max": 0.821918
+      }
+    },
+    {
+      "mode": "hybrid",
+      "overall": {
+        "n": 10,
+        "hitAtK": 0.7,
+        "evidenceRecallAtK": 0.5,
+        "mrrAtK": 0.44761904761904764
+      },
+      "byType": {
+        "config": {
+          "n": 2,
+          "hitAtK": 0.5,
+          "evidenceRecallAtK": 0.5,
+          "mrrAtK": 0.07142857142857142
+        },
+        "error": {
+          "n": 2,
+          "hitAtK": 1,
+          "evidenceRecallAtK": 0.5,
+          "mrrAtK": 1
+        },
+        "flow": {
+          "n": 2,
+          "hitAtK": 1,
+          "evidenceRecallAtK": 0.75,
+          "mrrAtK": 0.75
+        },
+        "locate": {
+          "n": 4,
+          "hitAtK": 0.5,
+          "evidenceRecallAtK": 0.375,
+          "mrrAtK": 0.20833333333333331
+        }
+      },
+      "abstention": {
+        "n": 2,
+        "top1VectorCosine": {
+          "n": 2,
+          "min": 0.50068,
+          "median": 0.50427,
+          "max": 0.50786
+        },
+        "top1Rrf": {
+          "n": 2,
+          "min": 0.031054,
+          "median": 0.031656000000000004,
+          "max": 0.032258
+        },
+        "hitsReturned": [
+          8,
+          8
+        ],
+        "absenceEvidenceFound": [
+          0,
+          0
+        ]
+      },
+      "answerableTop1VectorCosine": {
+        "n": 10,
+        "min": 0.55812,
+        "median": 0.6856375,
+        "max": 0.770955
+      }
+    }
+  ],
+  "perQuestion": [
+    {
+      "id": "K1",
+      "type": "locate",
+      "mode": "bm25",
+      "score": {
+        "hit": false,
+        "recall": 0,
+        "reciprocalRank": 0,
+        "firstRank": null,
+        "foundEvidence": 0
+      },
+      "top1": {
+        "citation": "lib@3541888878c4:source/types/retry.ts:L21-139",
+        "rrf": 0.016393,
+        "vector_cosine": null
+      },
+      "hitsReturned": 8
+    },
+    {
+      "id": "K2",
+      "type": "config",
+      "mode": "bm25",
+      "score": {
+        "hit": false,
+        "recall": 0,
+        "reciprocalRank": 0,
+        "firstRank": null,
+        "foundEvidence": 0
+      },
+      "top1": {
+        "citation": "lib@3541888878c4:source/types/retry.ts:L21-139",
+        "rrf": 0.016393,
+        "vector_cosine": null
+      },
+      "hitsReturned": 8
+    },
+    {
+      "id": "K3",
+      "type": "flow",
+      "mode": "bm25",
+      "score": {
+        "hit": false,
+        "recall": 0,
+        "reciprocalRank": 0,
+        "firstRank": null,
+        "foundEvidence": 0
+      },
+      "top1": {
+        "citation": "lib@3541888878c4:readme.md:L232-299",
+        "rrf": 0.016393,
+        "vector_cosine": null
+      },
+      "hitsReturned": 8
+    },
+    {
+      "id": "K4",
+      "type": "locate",
+      "mode": "bm25",
+      "score": {
+        "hit": false,
+        "recall": 0,
+        "reciprocalRank": 0,
+        "firstRank": null,
+        "foundEvidence": 0
+      },
+      "top1": {
+        "citation": "lib@3541888878c4:readme.md:L1830-1948",
+        "rrf": 0.016393,
+        "vector_cosine": null
+      },
+      "hitsReturned": 8
+    },
+    {
+      "id": "K5",
+      "type": "error",
+      "mode": "bm25",
+      "score": {
+        "hit": true,
+        "recall": 0.5,
+        "reciprocalRank": 1,
+        "firstRank": 1,
+        "foundEvidence": 1
+      },
+      "top1": {
+        "citation": "lib@3541888878c4:source/errors/HTTPError.ts:L6-34",
+        "rrf": 0.016393,
+        "vector_cosine": null
+      },
+      "hitsReturned": 8
+    },
+    {
+      "id": "K6",
+      "type": "locate",
+      "mode": "bm25",
+      "score": {
+        "hit": false,
+        "recall": 0,
+        "reciprocalRank": 0,
+        "firstRank": null,
+        "foundEvidence": 0
+      },
+      "top1": {
+        "citation": "lib@3541888878c4:readme.md:L1732-1829",
+        "rrf": 0.016393,
+        "vector_cosine": null
+      },
+      "hitsReturned": 8
+    },
+    {
+      "id": "K7",
+      "type": "flow",
+      "mode": "bm25",
+      "score": {
+        "hit": true,
+        "recall": 1,
+        "reciprocalRank": 0.2,
+        "firstRank": 5,
+        "foundEvidence": 1
+      },
+      "top1": {
+        "citation": "lib@3541888878c4:readme.md:L1732-1829",
+        "rrf": 0.016393,
+        "vector_cosine": null
+      },
+      "hitsReturned": 8
+    },
+    {
+      "id": "K8",
+      "type": "locate",
+      "mode": "bm25",
+      "score": {
+        "hit": false,
+        "recall": 0,
+        "reciprocalRank": 0,
+        "firstRank": null,
+        "foundEvidence": 0
+      },
+      "top1": {
+        "citation": "lib@3541888878c4:test/stream.ts:L1197-1289",
+        "rrf": 0.016393,
+        "vector_cosine": null
+      },
+      "hitsReturned": 8
+    },
+    {
+      "id": "K9",
+      "type": "error",
+      "mode": "bm25",
+      "score": {
+        "hit": true,
+        "recall": 1,
+        "reciprocalRank": 0.3333333333333333,
+        "firstRank": 3,
+        "foundEvidence": 2
+      },
+      "top1": {
+        "citation": "lib@3541888878c4:source/core/Ky.ts:L135-199",
+        "rrf": 0.016393,
+        "vector_cosine": null
+      },
+      "hitsReturned": 8
+    },
+    {
+      "id": "K10",
+      "type": "config",
+      "mode": "bm25",
+      "score": {
+        "hit": false,
+        "recall": 0,
+        "reciprocalRank": 0,
+        "firstRank": null,
+        "foundEvidence": 0
+      },
+      "top1": {
+        "citation": "lib@3541888878c4:source/utils/normalize.ts:L37-100",
+        "rrf": 0.016393,
+        "vector_cosine": null
+      },
+      "hitsReturned": 8
+    },
+    {
+      "id": "KA1",
+      "type": "abstention",
+      "mode": "bm25",
+      "score": null,
+      "top1": {
+        "citation": "lib@3541888878c4:readme.md:L1830-1948",
+        "rrf": 0.016393,
+        "vector_cosine": null
+      },
+      "hitsReturned": 8,
+      "absenceEvidenceFound": 0
+    },
+    {
+      "id": "KA2",
+      "type": "abstention",
+      "mode": "bm25",
+      "score": null,
+      "top1": {
+        "citation": "lib@3541888878c4:readme.md:L1732-1829",
+        "rrf": 0.016393,
+        "vector_cosine": null
+      },
+      "hitsReturned": 8,
+      "absenceEvidenceFound": 0
+    },
+    {
+      "id": "K1",
+      "type": "locate",
+      "mode": "vector",
+      "score": {
+        "hit": true,
+        "recall": 1,
+        "reciprocalRank": 1,
+        "firstRank": 1,
+        "foundEvidence": 1
+      },
+      "top1": {
+        "citation": "lib@3541888878c4:source/core/Ky.ts:L665-686",
+        "rrf": 0.016393,
+        "vector_cosine": 0.821918
+      },
+      "hitsReturned": 8
+    },
+    {
+      "id": "K2",
+      "type": "config",
+      "mode": "vector",
+      "score": {
+        "hit": false,
+        "recall": 0,
+        "reciprocalRank": 0,
+        "firstRank": null,
+        "foundEvidence": 0
+      },
+      "top1": {
+        "citation": "lib@3541888878c4:test/retry.ts:L1750-1852",
+        "rrf": 0.016393,
+        "vector_cosine": 0.765488
+      },
+      "hitsReturned": 8
+    },
+    {
+      "id": "K3",
+      "type": "flow",
+      "mode": "vector",
+      "score": {
+        "hit": true,
+        "recall": 0.5,
+        "reciprocalRank": 0.2,
+        "firstRank": 5,
+        "foundEvidence": 1
+      },
+      "top1": {
+        "citation": "lib@3541888878c4:test/retry.ts:L514-619",
+        "rrf": 0.016393,
+        "vector_cosine": 0.781406
+      },
+      "hitsReturned": 8
+    },
+    {
+      "id": "K4",
+      "type": "locate",
+      "mode": "vector",
+      "score": {
+        "hit": true,
+        "recall": 1,
+        "reciprocalRank": 0.5,
+        "firstRank": 2,
+        "foundEvidence": 2
+      },
+      "top1": {
+        "citation": "lib@3541888878c4:source/core/Ky.ts:L855-866",
+        "rrf": 0.016393,
+        "vector_cosine": 0.698723
+      },
+      "hitsReturned": 8
+    },
+    {
+      "id": "K5",
+      "type": "error",
+      "mode": "vector",
+      "score": {
+        "hit": true,
+        "recall": 0.5,
+        "reciprocalRank": 1,
+        "firstRank": 1,
+        "foundEvidence": 1
+      },
+      "top1": {
+        "citation": "lib@3541888878c4:source/errors/HTTPError.ts:L6-34",
+        "rrf": 0.016393,
+        "vector_cosine": 0.701378
+      },
+      "hitsReturned": 8
+    },
+    {
+      "id": "K6",
+      "type": "locate",
+      "mode": "vector",
+      "score": {
+        "hit": true,
+        "recall": 1,
+        "reciprocalRank": 0.25,
+        "firstRank": 4,
+        "foundEvidence": 1
+      },
+      "top1": {
+        "citation": "lib@3541888878c4:readme.md:L1008-1119",
+        "rrf": 0.016393,
+        "vector_cosine": 0.670679
+      },
+      "hitsReturned": 8
+    },
+    {
+      "id": "K7",
+      "type": "flow",
+      "mode": "vector",
+      "score": {
+        "hit": true,
+        "recall": 1,
+        "reciprocalRank": 0.5,
+        "firstRank": 2,
+        "foundEvidence": 1
+      },
+      "top1": {
+        "citation": "lib@3541888878c4:test/request-construction.ts:L18-124",
+        "rrf": 0.016393,
+        "vector_cosine": 0.741301
+      },
+      "hitsReturned": 8
+    },
+    {
+      "id": "K8",
+      "type": "locate",
+      "mode": "vector",
+      "score": {
+        "hit": false,
+        "recall": 0,
+        "reciprocalRank": 0,
+        "firstRank": null,
+        "foundEvidence": 0
+      },
+      "top1": {
+        "citation": "lib@3541888878c4:source/utils/body.ts:L78-110",
+        "rrf": 0.016393,
+        "vector_cosine": 0.655628
+      },
+      "hitsReturned": 8
+    },
+    {
+      "id": "K9",
+      "type": "error",
+      "mode": "vector",
+      "score": {
+        "hit": true,
+        "recall": 0.5,
+        "reciprocalRank": 0.5,
+        "firstRank": 2,
+        "foundEvidence": 1
+      },
+      "top1": {
+        "citation": "lib@3541888878c4:source/utils/body.ts:L176-198",
+        "rrf": 0.016393,
+        "vector_cosine": 0.73307
+      },
+      "hitsReturned": 8
+    },
+    {
+      "id": "K10",
+      "type": "config",
+      "mode": "vector",
+      "score": {
+        "hit": false,
+        "recall": 0,
+        "reciprocalRank": 0,
+        "firstRank": null,
+        "foundEvidence": 0
+      },
+      "top1": {
+        "citation": "lib@3541888878c4:source/core/Ky.ts:L855-866",
+        "rrf": 0.016393,
+        "vector_cosine": 0.600426
+      },
+      "hitsReturned": 8
+    },
+    {
+      "id": "KA1",
+      "type": "abstention",
+      "mode": "vector",
+      "score": null,
+      "top1": {
+        "citation": "lib@3541888878c4:source/index.ts:L1-14",
+        "rrf": 0.016393,
+        "vector_cosine": 0.536857
+      },
+      "hitsReturned": 8,
+      "absenceEvidenceFound": 0
+    },
+    {
+      "id": "KA2",
+      "type": "abstention",
+      "mode": "vector",
+      "score": null,
+      "top1": {
+        "citation": "lib@3541888878c4:readme.md:L1670-1731",
+        "rrf": 0.016393,
+        "vector_cosine": 0.570828
+      },
+      "hitsReturned": 8,
+      "absenceEvidenceFound": 0
+    },
+    {
+      "id": "K1",
+      "type": "locate",
+      "mode": "hybrid",
+      "score": {
+        "hit": true,
+        "recall": 1,
+        "reciprocalRank": 0.3333333333333333,
+        "firstRank": 3,
+        "foundEvidence": 1
+      },
+      "top1": {
+        "citation": "lib@3541888878c4:test/retry-decisions.ts:L66-174",
+        "rrf": 0.032002,
+        "vector_cosine": 0.770955
+      },
+      "hitsReturned": 8
+    },
+    {
+      "id": "K2",
+      "type": "config",
+      "mode": "hybrid",
+      "score": {
+        "hit": false,
+        "recall": 0,
+        "reciprocalRank": 0,
+        "firstRank": null,
+        "foundEvidence": 0
+      },
+      "top1": {
+        "citation": "lib@3541888878c4:readme.md:L300-414",
+        "rrf": 0.031281,
+        "vector_cosine": 0.699903
+      },
+      "hitsReturned": 8
+    },
+    {
+      "id": "K3",
+      "type": "flow",
+      "mode": "hybrid",
+      "score": {
+        "hit": true,
+        "recall": 0.5,
+        "reciprocalRank": 1,
+        "firstRank": 1,
+        "foundEvidence": 1
+      },
+      "top1": {
+        "citation": "lib@3541888878c4:source/core/retry-timing.ts:L25-49",
+        "rrf": 0.02967,
+        "vector_cosine": 0.755764
+      },
+      "hitsReturned": 8
+    },
+    {
+      "id": "K4",
+      "type": "locate",
+      "mode": "hybrid",
+      "score": {
+        "hit": true,
+        "recall": 0.5,
+        "reciprocalRank": 0.5,
+        "firstRank": 2,
+        "foundEvidence": 1
+      },
+      "top1": {
+        "citation": "lib@3541888878c4:readme.md:L415-470",
+        "rrf": 0.027746,
+        "vector_cosine": 0.570226
+      },
+      "hitsReturned": 8
+    },
+    {
+      "id": "K5",
+      "type": "error",
+      "mode": "hybrid",
+      "score": {
+        "hit": true,
+        "recall": 0.5,
+        "reciprocalRank": 1,
+        "firstRank": 1,
+        "foundEvidence": 1
+      },
+      "top1": {
+        "citation": "lib@3541888878c4:source/errors/HTTPError.ts:L6-34",
+        "rrf": 0.032787,
+        "vector_cosine": 0.701378
+      },
+      "hitsReturned": 8
+    },
+    {
+      "id": "K6",
+      "type": "locate",
+      "mode": "hybrid",
+      "score": {
+        "hit": false,
+        "recall": 0,
+        "reciprocalRank": 0,
+        "firstRank": null,
+        "foundEvidence": 0
+      },
+      "top1": {
+        "citation": "lib@3541888878c4:readme.md:L1008-1119",
+        "rrf": 0.027888,
+        "vector_cosine": 0.670679
+      },
+      "hitsReturned": 8
+    },
+    {
+      "id": "K7",
+      "type": "flow",
+      "mode": "hybrid",
+      "score": {
+        "hit": true,
+        "recall": 1,
+        "reciprocalRank": 0.5,
+        "firstRank": 2,
+        "foundEvidence": 1
+      },
+      "top1": {
+        "citation": "lib@3541888878c4:test/request-construction.ts:L18-124",
+        "rrf": 0.032522,
+        "vector_cosine": 0.741301
+      },
+      "hitsReturned": 8
+    },
+    {
+      "id": "K8",
+      "type": "locate",
+      "mode": "hybrid",
+      "score": {
+        "hit": false,
+        "recall": 0,
+        "reciprocalRank": 0,
+        "firstRank": null,
+        "foundEvidence": 0
+      },
+      "top1": {
+        "citation": "lib@3541888878c4:test/stream.ts:L1197-1289",
+        "rrf": 0.032522,
+        "vector_cosine": 0.645568
+      },
+      "hitsReturned": 8
+    },
+    {
+      "id": "K9",
+      "type": "error",
+      "mode": "hybrid",
+      "score": {
+        "hit": true,
+        "recall": 0.5,
+        "reciprocalRank": 1,
+        "firstRank": 1,
+        "foundEvidence": 1
+      },
+      "top1": {
+        "citation": "lib@3541888878c4:source/errors/ResponseSizeError.ts:L4-30",
+        "rrf": 0.032002,
+        "vector_cosine": 0.671372
+      },
+      "hitsReturned": 8
+    },
+    {
+      "id": "K10",
+      "type": "config",
+      "mode": "hybrid",
+      "score": {
+        "hit": true,
+        "recall": 1,
+        "reciprocalRank": 0.14285714285714285,
+        "firstRank": 7,
+        "foundEvidence": 1
+      },
+      "top1": {
+        "citation": "lib@3541888878c4:source/utils/timeout.ts:L10-46",
+        "rrf": 0.028373,
+        "vector_cosine": 0.55812
+      },
+      "hitsReturned": 8
+    },
+    {
+      "id": "KA1",
+      "type": "abstention",
+      "mode": "hybrid",
+      "score": null,
+      "top1": {
+        "citation": "lib@3541888878c4:readme.md:L1732-1829",
+        "rrf": 0.031054,
+        "vector_cosine": 0.50068
+      },
+      "hitsReturned": 8,
+      "absenceEvidenceFound": 0
+    },
+    {
+      "id": "KA2",
+      "type": "abstention",
+      "mode": "hybrid",
+      "score": null,
+      "top1": {
+        "citation": "lib@3541888878c4:readme.md:L1-90",
+        "rrf": 0.032258,
+        "vector_cosine": 0.50786
+      },
+      "hitsReturned": 8,
+      "absenceEvidenceFound": 0
+    }
+  ]
+}

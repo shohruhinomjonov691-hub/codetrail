@@ -207,6 +207,8 @@ On the development Mac (not a server), with about 5.9k context tokens, the first
 
 **D0b (2026-10-15):** the same model with compact line-numbered excerpts, schema-constrained JSON claims (`status` + `claims[{text, source_id, lines, quote}]`) and a fail-closed validator (`src/eval/grounded.ts`). End-to-end on the default retrieval: **0/10** answerable questions answered correctly and validly, and 2/3 unanswerable questions abstained. With golden evidence, which is a diagnostic only, 2/10. Three answers passed the validator although their claims were false, so a valid quote does not prove a claim. TTFT fell to about 4.4 s at about 2.9k prompt tokens (Mac). Details: `eval/reports/2026-10-15-d0b-grounded/`.
 
+**D0c (2026-10-15, 7B, not run):** Qwen2.5-Coder-7B-Instruct Q4_K_M was downloaded, verified and pinned (`models.lock.json` → `generation7b`, Mac benchmark only), and a protocol was committed before the run. Loading the 7B model next to the embedding server drove the Mac to memory-pressure level 4 (7% free) while other apps were open, so the memory guard stopped the run before any generation. There are no 7B results yet. See `eval/reports/2026-10-15-d0c-7b/`.
+
 ## Support boundaries
 
 - **Languages:** only TypeScript/JavaScript code is chunked by AST. Markdown, JSON, YAML and GraphQL are chunked as text. No other languages are supported.

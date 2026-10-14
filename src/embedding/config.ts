@@ -1,7 +1,7 @@
 import { join, resolve } from 'node:path';
 import type { RuntimeConfig } from '../config.js';
 import { LlamaCppEmbedding } from './llamacpp.js';
-import { embeddingRecipeFromLock, loadModelsLock, verifyModelFile } from './models.js';
+import { embeddingRecipeFromLock, loadModelsLock } from './models.js';
 import type { EmbeddingRecipe } from './recipe.js';
 
 export interface EmbeddingSettings {
@@ -34,16 +34,15 @@ export function embeddingSettings(env: NodeJS.ProcessEnv = process.env, cwd = pr
 	};
 }
 
-/** Verifies the local weights against the lock, then returns an HTTP provider for the local server. */
+/** Returns an HTTP provider for the local server; identity (incl. the model file hash) is confirmed per operation. */
 export async function createEmbeddingProvider(config: RuntimeConfig, settings: EmbeddingSettings): Promise<LlamaCppEmbedding> {
-	const hashCacheDir = join(config.dataDir, 'cache');
-	await verifyModelFile(settings.modelFile, settings.expectedSha256, hashCacheDir);
+	// The model file is hashed (fresh) when identity is confirmed, once per operation.
+	void config;
 	const provider = new LlamaCppEmbedding({
 		url: settings.url,
 		allowedHosts: settings.allowedHosts,
 		recipe: settings.recipe,
 		modelFile: settings.modelFile,
-		hashCacheDir,
 	});
 	return provider;
 }

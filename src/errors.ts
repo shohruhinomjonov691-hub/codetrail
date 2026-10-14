@@ -32,8 +32,8 @@ export type ErrorCode =
 export class CodeTrailError extends Error {
 	readonly code: ErrorCode;
 
-	constructor(code: ErrorCode, message: string) {
-		super(message);
+	constructor(code: ErrorCode, message: string, options?: { cause?: unknown }) {
+		super(message, options);
 		this.name = 'CodeTrailError';
 		this.code = code;
 	}

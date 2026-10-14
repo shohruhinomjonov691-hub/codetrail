@@ -125,13 +125,14 @@ npm run cli -- search gotrip <snapshot_id> "where is the tour inquiry sent?" --m
 - **Model identity.**
   - A model's identity is the SHA-256 of the model file the server actually loaded, plus the runtime build the server reports (`build_info`) and the recipe hash.
   - It is confirmed only if the server reports the same file (by real path) that CodeTrail verified against `models.lock.json`, and reports its build. Otherwise indexing and vector search fail with `MODEL_MISMATCH`.
+  - The model file is hashed fresh once per operation (index build or search), through a single file descriptor. If the file is replaced or modified while it is being read, the result is rejected. No size/mtime digest cache is used. This proves what is on disk at verification time, not what the server holds in memory.
   - A probe-embedding cosine is never used as identity.
 - **Embedding cache.**
   - Vectors are reused only under an identical confirmed identity. The cache file is `data/embed-cache/v3-<hash>.sqlite`.
   - `llama-server` does not report its pooling or normalization settings. As an extra guard, a run whose probe embedding is not byte-identical to the one stored with the cache neither reads nor writes the cache (`embedded.cache = disabled-probe-differs`). This guard can only reject, never accept.
-  - Cached vectors are validated on read (dims, finite values, non-zero, unit norm) and recomputed when bad.
+  - Every vector — query, document, probe, cache read/write, index publish/load — must pass one strict rule: a `Float32Array` of exactly `dims` elements, all finite, non-zero, unit norm. The probe is checked before the cache is opened. Bad cached rows are recomputed.
   - Index vectors are validated again before publish and on load.
-  - Concurrent first-time opens are safe: `busy_timeout` is set first, and WAL/schema setup retries contention for a bounded time. Permanent errors fail with `CACHE_FAILED`.
+  - Concurrent first-time opens are safe: `busy_timeout` is set first, and WAL/schema setup retries lock contention for a bounded time. Any other failure fails with `CACHE_FAILED`, the connection is closed and the original cause is kept for diagnostics. This covers open errors, an existing file with a wrong schema and reference-probe setup.
 - **Older artifacts.**
   - Indexes from older schemas (1 and 2, built before identity binding) are refused with `INDEX_OUTDATED`. The error names the rebuild command, `codetrail index <project> <snapshot>`, which writes a new index next to the old one.
   - Older cache files (no prefix, or `v2-`) are never read. They can be deleted by hand.

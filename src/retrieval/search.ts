@@ -1,7 +1,7 @@
 import { CodeTrailError } from '../errors.js';
 import type { EmbeddingProvider } from '../embedding/provider.js';
 import { formatQuery, PROBE_TEXT } from '../embedding/recipe.js';
-import { isUnitVector } from '../embedding/vectors.js';
+import { assertExactUnitVector } from '../embedding/vectors.js';
 import type { LoadedIndex } from './index.js';
 import { ftsQuery } from './text.js';
 
@@ -32,11 +32,7 @@ function dot(a: Float32Array, offset: number, b: Float32Array): number {
 	return s;
 }
 
-function assertQueryVector(v: unknown, dims: number, what: string): asserts v is Float32Array {
-	if (!(v instanceof Float32Array) || v.length !== dims || !isUnitVector(v, dims)) {
-		throw new CodeTrailError('PROVIDER_FAILED', `${what} is not a finite, non-zero unit vector of ${dims} dims`);
-	}
-}
+const assertQueryVector: (v: unknown, dims: number, what: string) => asserts v is Float32Array = assertExactUnitVector;
 
 /**
  * Confirms the provider is the model the index was built with. Identity is the

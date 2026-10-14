@@ -11,7 +11,7 @@ import { DatabaseSync, type Database } from '../sqlite.js';
 import type { EmbeddingProvider, ModelIdentity } from '../embedding/provider.js';
 import { formatDocument, PROBE_TEXT, recipeHash, type EmbeddingRecipe } from '../embedding/recipe.js';
 import { EmbeddingCache } from './cache.js';
-import { firstInvalidRow, isUnitVector } from '../embedding/vectors.js';
+import { assertExactUnitVector, firstInvalidRow, isExactUnitVector } from '../embedding/vectors.js';
 import { splitIdentifiers } from './text.js';
 
 /**
@@ -148,8 +148,12 @@ export async function buildIndex(
 
 		t0 = Date.now();
 		// The probe is stored as a drift check for queries; it is not an identity.
-		const [probe] = await provider.embed([PROBE_TEXT], 'document');
-		const cache = new EmbeddingCache(config.dataDir, identity, recipe.dims, probe as Float32Array);
+		const probes = await provider.embed([PROBE_TEXT], 'document');
+		const probe = probes[0];
+		// Validate the probe BEFORE the cache is opened or written.
+		if (probes.length !== 1) throw new CodeTrailError('PROVIDER_FAILED', 'Embedding provider returned a wrong number of probe vectors');
+		assertExactUnitVector(probe, recipe.dims, 'Probe embedding');
+		const cache = new EmbeddingCache(config.dataDir, identity, recipe.dims, probe);
 		const vectors = new Float32Array(chunks.length * recipe.dims);
 		const missing: number[] = [];
 		inputs.forEach((input, i) => {
@@ -158,7 +162,15 @@ export async function buildIndex(
 			else missing.push(i);
 		});
 		if (missing.length > 0) {
-			const computed = await provider.embed(missing.map((i) => inputs[i] as string), 'document');
+			let computed: Float32Array[];
+			try {
+				computed = await provider.embed(missing.map((i) => inputs[i] as string), 'document');
+				if (computed.length !== missing.length) throw new CodeTrailError('PROVIDER_FAILED', 'Embedding provider returned a wrong number of vectors');
+				computed.forEach((v, j) => assertExactUnitVector(v, recipe.dims, `Document embedding for chunk ${chunks[missing[j] as number]?.id ?? j}`));
+			} catch (err) {
+				cache.close();
+				throw err;
+			}
 			computed.forEach((v, j) => vectors.set(v, (missing[j] as number) * recipe.dims));
 			cache.putMany(computed.map((v, j) => ({ input: inputs[missing[j] as number] as string, vector: v })));
 		}
@@ -167,7 +179,7 @@ export async function buildIndex(
 		cache.close();
 		const embedMs = Date.now() - t0;
 		const bad = firstInvalidRow(vectors, recipe.dims);
-		if (bad >= 0 || !isUnitVector(probe as Float32Array, recipe.dims)) {
+		if (bad >= 0 || !isExactUnitVector(probe, recipe.dims)) {
 			throw new CodeTrailError('INDEX_CORRUPT', `Refusing to publish: invalid embedding for chunk ${bad >= 0 ? (chunks[bad]?.id ?? bad) : 'probe'}`);
 		}
 
@@ -178,7 +190,7 @@ export async function buildIndex(
 		mkdirSync(tmp);
 		try {
 			writeFileSync(join(tmp, 'vectors.f32'), toBytes(vectors));
-			writeFileSync(join(tmp, 'probe.f32'), toBytes(probe as Float32Array));
+			writeFileSync(join(tmp, 'probe.f32'), toBytes(probe));
 			writeSqlite(join(tmp, 'index.sqlite'), chunks);
 			const total = counts.reduce((a, b) => a + b, 0);
 			const meta: IndexMeta = {
@@ -265,7 +277,7 @@ export function loadIndex(dataDir: string, projectId: string, snapshotId: string
 	// Checksums only prove the files are unchanged since publish; also prove the values are sane.
 	const badRow = firstInvalidRow(vectors, meta.dims);
 	if (badRow >= 0) corrupt(`vector ${badRow} is not a finite unit vector`);
-	if (!isUnitVector(probe, meta.dims)) corrupt('probe is not a finite unit vector');
+	if (!isExactUnitVector(probe, meta.dims)) corrupt('probe is not a finite unit vector');
 	const db = new DatabaseSync(join(dir, 'index.sqlite'), { readOnly: true });
 	const rows = (db.prepare('SELECT count(*) AS n FROM chunks').get() as { n: number }).n;
 	if (rows !== meta.chunk_count) {

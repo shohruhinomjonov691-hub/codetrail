@@ -4,7 +4,7 @@ import { CodeTrailError } from '../errors.js';
 import { verifyModelFile } from './models.js';
 import type { EmbeddingProvider, ModelIdentity, ServerInfo } from './provider.js';
 import { recipeHash, type EmbeddingRecipe } from './recipe.js';
-import { isUnitVector } from './vectors.js';
+import { isExactUnitVector } from './vectors.js';
 import { Semaphore, validateProviderUrl } from './url.js';
 
 export interface LlamaCppEmbeddingOptions {
@@ -17,8 +17,6 @@ export interface LlamaCppEmbeddingOptions {
 	 * matches the pinned sha256. Without it, identity cannot be confirmed.
 	 */
 	modelFile?: string;
-	/** Where the model file digest may be cached (by path, size, mtime). */
-	hashCacheDir?: string;
 	/** Per-request timeouts. Queries are short; document batches are indexed offline on the operator machine. */
 	queryTimeoutMs?: number;
 	documentTimeoutMs?: number;
@@ -33,15 +31,13 @@ export class LlamaCppEmbedding implements EmbeddingProvider {
 	readonly recipe: EmbeddingRecipe;
 	private readonly base: URL;
 	private readonly limiter: Semaphore;
-	private readonly opts: Required<Omit<LlamaCppEmbeddingOptions, 'url' | 'allowedHosts' | 'recipe' | 'modelFile' | 'hashCacheDir'>>;
+	private readonly opts: Required<Omit<LlamaCppEmbeddingOptions, 'url' | 'allowedHosts' | 'recipe' | 'modelFile'>>;
 	private readonly modelFile: string | undefined;
-	private readonly hashCacheDir: string | undefined;
 
 	constructor(options: LlamaCppEmbeddingOptions) {
 		this.base = validateProviderUrl(options.url, options.allowedHosts);
 		this.recipe = options.recipe;
 		this.modelFile = options.modelFile;
-		this.hashCacheDir = options.hashCacheDir;
 		this.opts = {
 			queryTimeoutMs: options.queryTimeoutMs ?? EMBED_LIMITS.queryTimeoutMs,
 			documentTimeoutMs: options.documentTimeoutMs ?? EMBED_LIMITS.documentTimeoutMs,
@@ -118,7 +114,8 @@ export class LlamaCppEmbedding implements EmbeddingProvider {
 		};
 		const served = real(server.modelPath);
 		if (!served || served !== real(this.modelFile as string)) fail('server reports a different model file than the verified local file');
-		await verifyModelFile(this.modelFile as string, this.recipe.model.sha256, this.hashCacheDir ?? '');
+		// Fresh, descriptor-stable hash of the file on disk (see sha256FileStable).
+		await verifyModelFile(this.modelFile as string, this.recipe.model.sha256);
 		return { modelSha256: this.recipe.model.sha256, runtime: server.runtime, recipeHash: recipeHash(this.recipe) };
 	}
 
@@ -169,6 +166,6 @@ export function normalizeVector(values: readonly number[], dims: number): Float3
 	const norm = Math.sqrt(sum);
 	const out = new Float32Array(dims);
 	for (let i = 0; i < dims; i++) out[i] = (values[i] as number) / maxAbs / norm;
-	if (!isUnitVector(out, dims)) throw new CodeTrailError('PROVIDER_FAILED', 'Embedding could not be normalized to a finite unit vector');
+	if (!isExactUnitVector(out, dims)) throw new CodeTrailError('PROVIDER_FAILED', 'Embedding could not be normalized to a finite unit vector');
 	return out;
 }

@@ -1,12 +1,13 @@
-import type { ChunkRecord } from '../snapshot.js';
+import type { SourceFileText } from '../snapshot.js';
 import type { ReferenceScan } from './fixture.js';
-import { occurrencesInSource, type IdentifierOccurrence } from './identifiers.js';
+import { occurrencesInFiles, type IdentifierOccurrence } from './identifiers.js';
 
 /**
  * "Identifier occurrences" for one name in one source of the snapshot: every
  * identifier token with that exact name in the snapshot's code files, except
  * the single declaration token named by the fixture. Not binding-aware and not
- * a runtime-usage proof; only files the snapshot included are scanned.
+ * a runtime-usage proof; only files the snapshot included are scanned, using
+ * their full stored text (see readSourceTexts).
  */
 export interface ReferenceScanResult {
 	kind: 'identifier-occurrences';
@@ -27,8 +28,9 @@ export function expectedOccurrences(scan: ReferenceScan): number {
 	return scan.expect_occurrences ?? scan.expect_usages ?? 0;
 }
 
-export function scanReferences(chunks: readonly ChunkRecord[], scan: ReferenceScan): ReferenceScanResult {
-	const all = occurrencesInSource(chunks, scan.source_id, scan.identifier);
+/** `files`: the full, verified texts of every included file of `scan.source_id`. */
+export function scanReferences(files: readonly SourceFileText[], scan: ReferenceScan): ReferenceScanResult {
+	const all = occurrencesInFiles(files, scan.identifier);
 	const decl = declarationToken(all, scan);
 	const excluded = decl.length === 1 ? decl[0] : undefined;
 	const occurrences = all.filter((o) => o !== excluded).map(({ path, line, column }) => ({ path, line, column }));

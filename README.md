@@ -29,11 +29,16 @@ CodeTrail is a codebase RAG for TypeScript/JavaScript projects. The goal is to a
    - **Limits:** every chunk has at most 120 lines and 6000 characters.
    - **Other formats:** Markdown splits at headings. JSON, YAML and GraphQL split at shallow-indent lines.
 6. **Deterministic, immutable artifacts.**
-   - **Snapshot id:** `snapshot_id = sha256(project_id, source_id@commit…, config hash)`. The config hash covers the filters, scanner and chunker versions and the project excludes.
+   - **Snapshot id:** `snapshot_id = sha256(project_id, source_id@commit…, config hash)`. The config hash covers the snapshot schema, the filters, scanner and chunker versions and the project excludes.
    - **Chunk id:** each chunk id is a hash of project, source, commit, path and line range.
    - **No overwrites:** an existing snapshot is never overwritten. A new commit produces a new snapshot next to the old one.
    - **Exact text:** every chunk's `text` is exactly lines `start_line..end_line` of the committed file. A UTF-8 BOM and CRLF line endings are kept as they are.
    - **Coverage:** every non-blank line that is not only closing punctuation lands in some chunk. This includes comments after the last member of a large class.
+   - **Stored files (snapshot schema 2, 2026-10-15):** the exact committed bytes of every **included** file are stored as `files/<sha256>`. They are written in the same quarantine run, after the content filters and the secret scan. Excluded files, secret-suspected files and blocked snapshots store nothing. Readers that need whole files (the identifier scan) use only this store, never chunks and never git:
+     - the bytes must hash to the manifest's `sha256`;
+     - every chunk of the file must belong to the source's commit and the snapshot, and its text must be exactly those lines of the stored file;
+     - the chunk count must match the manifest.
+     Any mismatch or missing file fails with `SNAPSHOT_CORRUPT`. A schema-1 snapshot has no stored files and fails with `SNAPSHOT_OUTDATED`, naming the rebuild command `codetrail snapshot create <project>`. Because the schema is part of the config hash, the rebuild gets a new snapshot id next to the old one; chunks and chunk ids are unchanged.
 7. **Concurrency.**
    - **Snapshots:** snapshot creation holds a per-project cross-process lock. Parallel runs wait (timeout 10 min), then report `exists`.
    - **Registry:** registry updates run as a locked read–modify–write (timeout 10 s).
@@ -86,6 +91,7 @@ data/
   snapshots/<project>/<snapshot_id>/
     manifest.json                       every tree entry: blob, sha256, status, exclusion reason
     chunks.jsonl                        one chunk per line
+    files/<sha256>                      exact bytes of each included file (schema 2)
     report.json                         counts, secret findings (no values), created_at
   snapshots/<project>/blocked/<id>.json report for a blocked snapshot (no chunks)
 ```
@@ -163,15 +169,16 @@ This evaluation measures **retrieval only**; no answers are generated. The numbe
   - MRR@8: reciprocal rank of the first chunk that satisfies any required group.
   - Abstention questions are kept out of the recall numbers; their top-1 scores are reported separately.
 - **"Is X used?" questions** (T16) also get an **identifier-occurrence scan**, reported apart from retrieval.
-  - **How it works:** it uses the TypeScript parser over the snapshot's included code files. Every `Identifier` token with exactly that name counts as a separate occurrence, except the one declaration token named by the fixture. `START_X`, `START_X$` and `$START_X` are different identifiers. Comments, string and template text and JSX text are not counted, while expressions inside `${…}` and `{…}` are.
+  - **How it works:** it uses the TypeScript parser over the **full stored text** of the snapshot's included code files (checksum-verified, see "Stored files"; never rebuilt from chunks). Every `Identifier` token with exactly that name counts as a separate occurrence, except the one declaration token named by the fixture. `START_X`, `START_X$` and `$START_X` are different identifiers. Comments, string and template text and JSX text are not counted, while expressions inside `${…}` and `{…}` are. Escaped spellings such as `\u0053TART_X` count as the identifier they resolve to.
+  - **Declaration token:** the declaration's own name slot of a variable, function, class, interface, type alias, enum or enum member, namespace/module, type parameter, parameter, binding element, method, property, get/set accessor, object-literal property, import (default, namespace, named, `import X = …`) or `export * as X`. Calls, property accesses, shorthand properties (`{ X }`), export lists and type references are occurrences.
   - **What it is not:** this is a syntactic token count. It is not binding-aware semantic reference analysis, and it does not prove runtime usage. Excluded files (for example generated code or `node_modules`) are not scanned.
-  - **T16 result:** in snapshot `14bcc5ca…` (frontend source, 195 included code files), `START_CONVERSATION` has its declaration token at `apollo/user/mutation.ts:414:14` and 0 other occurrences (expected 0). This says nothing about files outside that snapshot.
+  - **T16 result:** in snapshot `d75aaec9…` (schema 2, same commits and chunks as the earlier `14bcc5ca…`; frontend source, 195 included code files read from the verified file store), `START_CONVERSATION` has its declaration token at `apollo/user/mutation.ts:414:14` and 0 other occurrences (expected 0). This says nothing about files outside that snapshot.
 - **Command:**
   ```bash
   npm run cli -- eval gotrip <snapshot_id> eval/gotrip.tuning.json --mode all --k 8 --out eval/reports/<date>
   ```
 
-v2 results, on the same snapshots and indexes. Embedding: Qwen3-Embedding-0.6B Q8_0 on llama.cpp b11606. "Before" is the pre-tuning setting (BM25 `[2,3,1,1]`, RRF k 60, pool 50); "shipped" is the tuned default (BM25 `[3,3,1,2]`, RRF k 30, pool 100). The tuning was **not** redone for v2.
+v2 results. The reports were regenerated on the schema-2 snapshots (GoTrip `d75aaec9…`, ky `6b9989f3…`; same commits, identical chunks and manifest file lists, every vector from the embedding cache); all metrics and per-question results are identical to the schema-1 run. Embedding: Qwen3-Embedding-0.6B Q8_0 on llama.cpp b11606. "Before" is the pre-tuning setting (BM25 `[2,3,1,1]`, RRF k 60, pool 50); "shipped" is the tuned default (BM25 `[3,3,1,2]`, RRF k 30, pool 100). The tuning was **not** redone for v2.
 
 | Corpus | Mode | Hit@8 before → shipped | Evidence Recall@8 before → shipped | MRR@8 before → shipped |
 | --- | --- | --- | --- | --- |

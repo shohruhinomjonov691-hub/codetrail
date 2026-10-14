@@ -13,7 +13,14 @@ import { classifyContent, classifyPath, FILTER_LIMITS, filterConfigFingerprint, 
 import { Registry, type ProjectRecord } from './registry.js';
 import { scannerFingerprint, scanText, type Confidence } from './secrets.js';
 
-export const SNAPSHOT_SCHEMA = 1;
+/**
+ * Schema 2 (2026-10-15): the exact bytes of every included file are stored in
+ * `files/<sha256>` so consumers that need whole files (the identifier scan) never
+ * rebuild them from chunks. Schema-1 snapshots have no stored files and are
+ * refused by those consumers with SNAPSHOT_OUTDATED; the schema is part of the
+ * config hash, so a rebuild gets a new snapshot id next to the old one.
+ */
+export const SNAPSHOT_SCHEMA = 2;
 
 export interface ManifestFile {
 	source_id: string;
@@ -100,6 +107,7 @@ export function snapshotsRoot(dataDir: string, projectId: string): string {
 export function configHash(project: ProjectRecord): string {
 	return sha256Hex(
 		canonicalJson({
+			snapshot: SNAPSHOT_SCHEMA,
 			filters: filterConfigFingerprint(),
 			scanner: scannerFingerprint(),
 			chunker: { version: CHUNKER_VERSION, limits: CHUNK_LIMITS },
@@ -217,6 +225,8 @@ async function buildSnapshot(config: RuntimeConfig, project: ProjectRecord, reso
 	const files: ManifestFile[] = [];
 	const chunks: ChunkRecord[] = [];
 	const findings: SecretFindingRecord[] = [];
+	// Included files only: they passed the content filters and the secret scan.
+	const stored = new Map<string, Buffer>();
 	let blocked = false;
 
 	for (const { source, gitDir, commit } of resolved) {
@@ -288,6 +298,8 @@ async function buildSnapshot(config: RuntimeConfig, project: ProjectRecord, reso
 					text,
 				});
 			}
+			const fileSha = sha256Hex(bytes);
+			stored.set(fileSha, bytes);
 			files.push({
 				source_id: source.id,
 				path: entry.path,
@@ -296,7 +308,7 @@ async function buildSnapshot(config: RuntimeConfig, project: ProjectRecord, reso
 				size: entry.size,
 				status: 'included',
 				reason: null,
-				sha256: sha256Hex(bytes),
+				sha256: fileSha,
 				language,
 				chunks: raw.length,
 			});
@@ -348,6 +360,8 @@ async function buildSnapshot(config: RuntimeConfig, project: ProjectRecord, reso
 	const tmp = join(root, `.tmp-${snapshotId}-${process.pid}`);
 	rmSync(tmp, { recursive: true, force: true });
 	mkdirSync(tmp);
+	mkdirSync(join(tmp, 'files'));
+	for (const [fileSha, bytes] of stored) writeFileSync(join(tmp, 'files', fileSha), bytes);
 	writeFileSync(join(tmp, 'chunks.jsonl'), chunks.map((c) => JSON.stringify(c)).join('\n') + (chunks.length ? '\n' : ''));
 	writeFileSync(join(tmp, 'report.json'), JSON.stringify(report, null, 2) + '\n');
 	writeFileSync(join(tmp, 'manifest.json'), JSON.stringify(manifest, null, 2) + '\n');
@@ -385,4 +399,68 @@ export function readSnapshot(dataDir: string, projectId: string, snapshotId: str
 		.filter(Boolean)
 		.map((line) => JSON.parse(line) as ChunkRecord);
 	return { manifest, report, chunks };
+}
+
+export interface SourceFileText {
+	path: string;
+	text: string;
+}
+
+/**
+ * The full text of every included file of one source, read from the snapshot's
+ * own `files/` store (the exact committed bytes, stored after the content filters
+ * and the secret scan — no git access, nothing re-filtered). Fails closed:
+ * - a schema-1 snapshot (no stored files) → SNAPSHOT_OUTDATED with the rebuild command;
+ * - a manifest of another project/snapshot, an unknown source, a missing or
+ *   unreadable file, a SHA-256 that differs from the manifest, or chunks that
+ *   disagree with the file (commit, snapshot, text or count) → SNAPSHOT_CORRUPT.
+ */
+export function readSourceTexts(dataDir: string, projectId: string, snapshotId: string, sourceId: string): SourceFileText[] {
+	const { manifest, chunks } = readSnapshot(dataDir, projectId, snapshotId);
+	const dir = join(snapshotsRoot(dataDir, projectId), snapshotId);
+	const where = `snapshot ${snapshotId}`;
+	if (manifest.schema !== SNAPSHOT_SCHEMA) {
+		throw new CodeTrailError(
+			'SNAPSHOT_OUTDATED',
+			`${where} has schema ${manifest.schema} without stored source files (need ${SNAPSHOT_SCHEMA}); rebuild it with: codetrail snapshot create ${projectId}`,
+		);
+	}
+	const corrupt = (detail: string): CodeTrailError => new CodeTrailError('SNAPSHOT_CORRUPT', `${where}: ${detail}`);
+	if (manifest.project_id !== projectId || manifest.snapshot_id !== snapshotId) throw corrupt('manifest belongs to another project or snapshot');
+	const source = manifest.sources.find((s) => s.source_id === sourceId);
+	if (!source) throw new CodeTrailError('UNKNOWN_SOURCE', `Unknown source in ${where}: ${sourceId}`);
+	if (!isFullSha(source.commit)) throw corrupt(`source ${sourceId} has no exact commit`);
+	const chunksByPath = new Map<string, ChunkRecord[]>();
+	for (const c of chunks) {
+		if (c.source_id !== sourceId) continue;
+		const list = chunksByPath.get(c.path) ?? [];
+		list.push(c);
+		chunksByPath.set(c.path, list);
+	}
+	const out: SourceFileText[] = [];
+	for (const f of manifest.files) {
+		if (f.source_id !== sourceId || f.status !== 'included') continue;
+		const label = `${sourceId}:${f.path}`;
+		if (!f.sha256 || !/^[0-9a-f]{64}$/.test(f.sha256)) throw corrupt(`${label} has no checksum`);
+		let bytes: Buffer;
+		try {
+			bytes = readFileSync(join(dir, 'files', f.sha256));
+		} catch {
+			throw corrupt(`stored text of ${label} is missing; rebuild the snapshot`);
+		}
+		if (sha256Hex(bytes) !== f.sha256) throw corrupt(`stored text of ${label} does not match its checksum`);
+		const content = classifyContent(bytes);
+		if (!('text' in content)) throw corrupt(`stored text of ${label} is not an included text file`);
+		const idx = new LineIndex(content.text);
+		const own = chunksByPath.get(f.path) ?? [];
+		chunksByPath.delete(f.path);
+		if (own.length !== f.chunks) throw corrupt(`${label} has ${own.length} chunks, manifest says ${f.chunks}`);
+		for (const c of own) {
+			if (c.commit !== source.commit || c.snapshot_id !== snapshotId || c.project_id !== projectId) throw corrupt(`chunk of ${label} belongs to another commit or snapshot`);
+			if (c.start_line < 1 || c.end_line > idx.count || idx.slice(c.start_line, c.end_line) !== c.text) throw corrupt(`chunk ${label}:${c.start_line} differs from the stored file`);
+		}
+		out.push({ path: f.path, text: content.text });
+	}
+	if (chunksByPath.size > 0) throw corrupt(`chunks for files that are not included: ${[...chunksByPath.keys()].slice(0, 3).join(', ')}`);
+	return out;
 }

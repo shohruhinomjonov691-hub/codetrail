@@ -1,9 +1,9 @@
 {
   "scoring": "anchor-line/required-groups v2",
   "project": "gotrip",
-  "snapshot_id": "14bcc5ca5560dc64618b0b87",
-  "fixture_snapshot_id": "14bcc5ca5560dc64618b0b87",
-  "index_id": "370fef9a01b0ef4e02e18bf5",
+  "snapshot_id": "d75aaec921284e35893092a7",
+  "fixture_snapshot_id": "d75aaec921284e35893092a7",
+  "index_id": "e492467de717934070e23f61",
   "recipe": {
     "model": "Qwen3-Embedding-0.6B",
     "quant": "Q8_0",

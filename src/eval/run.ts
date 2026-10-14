@@ -1,7 +1,7 @@
 import type { RuntimeConfig } from '../config.js';
 import { CodeTrailError } from '../errors.js';
 import type { EmbeddingProvider } from '../embedding/provider.js';
-import { readSnapshot } from '../snapshot.js';
+import { readSnapshot, readSourceTexts, type SourceFileText } from '../snapshot.js';
 import { loadIndex } from '../retrieval/index.js';
 import { DEFAULT_TUNING, openSearchSession, type SearchHit, type SearchMode, type SearchTuning } from '../retrieval/search.js';
 import type { EmbeddingRecipe } from '../embedding/recipe.js';
@@ -68,7 +68,14 @@ export async function runEvaluation(
 		throw new CodeTrailError('USAGE', `Fixture was written for snapshot ${fixture.snapshot_id}, not ${snapshotId}; refusing to evaluate`);
 	}
 	const { manifest, chunks } = readSnapshot(config.dataDir, projectId, snapshotId);
-	const problems = validateFixture(fixture, manifest, chunks);
+	// Full stored file texts for the identifier scan, verified once per source (fails closed).
+	const texts = new Map<string, readonly SourceFileText[]>();
+	const sourceTexts = (sourceId: string): readonly SourceFileText[] => {
+		let t = texts.get(sourceId);
+		if (!t) texts.set(sourceId, (t = readSourceTexts(config.dataDir, projectId, snapshotId, sourceId)));
+		return t;
+	};
+	const problems = validateFixture(fixture, manifest, chunks, sourceTexts);
 	if (problems.length > 0) throw new CodeTrailError('USAGE', `Fixture does not match the snapshot:\n- ${problems.join('\n- ')}`);
 	const needsProvider = opts.modes.some((m) => m !== 'bm25');
 	if (needsProvider && !opts.provider) throw new CodeTrailError('USAGE', 'vector/hybrid evaluation needs an embedding provider');
@@ -119,7 +126,7 @@ export async function runEvaluation(
 				answerableTop1VectorCosine: distribution(cos(answerable)),
 			};
 		});
-		const referenceScans = fixture.questions.filter((q) => q.reference_scan).map((q) => ({ id: q.id, ...scanReferences(chunks, q.reference_scan!) }));
+		const referenceScans = fixture.questions.filter((q) => q.reference_scan).map((q) => ({ id: q.id, ...scanReferences(sourceTexts(q.reference_scan!.source_id), q.reference_scan!) }));
 		return {
 			scoring: SCORING,
 			project: projectId,

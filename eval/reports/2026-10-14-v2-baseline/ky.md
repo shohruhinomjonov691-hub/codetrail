@@ -1,4 +1,4 @@
-### ky — snapshot `9d5e668f5c47`, index `9ab026fb3737`
+### ky — snapshot `6b9989f36c61`, index `3bc4cd734262`
 
 Scoring: **anchor-line/required-groups v2** — evidence counts only when one retrieved chunk contains its exact anchor line; recall is over required groups (any alternative satisfies a group); optional evidence is reported, never in the denominator.
 

@@ -55,7 +55,7 @@ describe('P3 — identifier boundaries follow JavaScript identifiers', () => {
 				{ id: 'U', type: 'unused', question: 'Is $START_X used?', required: [[{ source_id: 'fe', path: 'm.ts', start_line: 1, end_line: 1, anchor: '$START_X' }]], optional: [], reference_scan: scan('$START_X') },
 			],
 		} as unknown as EvalFixture;
-		expect(validateFixture(fx, manifest, chunks)).toEqual([]);
+		expect(validateFixture(fx, manifest, chunks, () => chunks)).toEqual([]);
 		expect(count(scanReferences(chunks, scan('$START_X')))).toBe(1);
 	});
 });

@@ -1,5 +1,5 @@
 import ts from 'typescript';
-import type { ChunkRecord } from '../snapshot.js';
+import type { SourceFileText } from '../snapshot.js';
 
 /**
  * Identifier tokenization shared by the reference-scan and the fixture
@@ -8,7 +8,10 @@ import type { ChunkRecord } from '../snapshot.js';
  * - `START_X`, `START_X$` and `$START_X` are different identifiers;
  * - comments, string/template literal text and JSX text are not identifiers,
  *   but expressions inside template `${…}` and JSX `{…}` are scanned;
- * - every occurrence is reported separately, with its line and column.
+ * - every occurrence is reported separately, with its line and column;
+ * - escaped spellings (`\u0053TART_X`) are the identifier TypeScript resolves them to.
+ * The parser always gets the exact, checksum-verified file text stored in the
+ * snapshot (never a reconstruction from chunks).
  *
  * This is a syntactic token match: it is NOT binding-aware (a shadowing local
  * with the same name also counts) and says nothing about runtime usage.
@@ -41,47 +44,49 @@ function scriptKind(path: string): ts.ScriptKind {
 	return ts.ScriptKind.TS;
 }
 
-/**
- * Rebuilds a file's text from its snapshot chunks. Lines no chunk covers are left
- * blank; by the chunker's coverage invariant they hold only whitespace or closing
- * punctuation, which never contains an identifier.
- */
-export function fileTextFromChunks(chunks: readonly ChunkRecord[]): string {
-	const lines: string[] = [];
-	for (const c of chunks) c.text.split('\n').forEach((text, i) => (lines[c.start_line - 1 + i] = text));
-	return Array.from(lines, (l) => l ?? '').join('\n');
-}
+/** Declarations whose `name` is the declared identifier. */
+const NAMED_DECLARATION = new Set<ts.SyntaxKind>([
+	ts.SyntaxKind.VariableDeclaration,
+	ts.SyntaxKind.FunctionDeclaration,
+	ts.SyntaxKind.FunctionExpression,
+	ts.SyntaxKind.ClassDeclaration,
+	ts.SyntaxKind.ClassExpression,
+	ts.SyntaxKind.InterfaceDeclaration,
+	ts.SyntaxKind.TypeAliasDeclaration,
+	ts.SyntaxKind.EnumDeclaration,
+	ts.SyntaxKind.EnumMember,
+	ts.SyntaxKind.ModuleDeclaration, // namespace X {}, module X {}, declare module X {}
+	ts.SyntaxKind.TypeParameter,
+	ts.SyntaxKind.Parameter,
+	ts.SyntaxKind.BindingElement, // `{ a: X }` / `{ X }` in a binding pattern declares X
+	ts.SyntaxKind.MethodDeclaration,
+	ts.SyntaxKind.MethodSignature,
+	ts.SyntaxKind.PropertyDeclaration,
+	ts.SyntaxKind.PropertySignature,
+	ts.SyntaxKind.PropertyAssignment, // `{ X: 1 }` (the shorthand `{ X }` reads X and is NOT a declaration)
+	ts.SyntaxKind.GetAccessor,
+	ts.SyntaxKind.SetAccessor,
+	ts.SyntaxKind.ImportEqualsDeclaration, // import X = require('m') / import X = A.B
+	ts.SyntaxKind.ImportClause, // import X from 'm'
+	ts.SyntaxKind.NamespaceImport, // import * as X from 'm'
+	ts.SyntaxKind.ImportSpecifier, // import { a as X } — `name`, not `propertyName`
+	ts.SyntaxKind.NamespaceExport, // export * as X from 'm'
+]);
 
-function isDeclarationName(node: ts.Identifier): boolean {
+/**
+ * True when this identifier is the name being declared. Only the declaration's own
+ * `name` slot counts: calls, property accesses, shorthand properties, export lists,
+ * type references and initializers are occurrences, not declarations.
+ */
+export function isDeclarationName(node: ts.Identifier): boolean {
 	const p = node.parent;
-	if (!p) return false;
-	if (
-		(ts.isVariableDeclaration(p) ||
-			ts.isFunctionDeclaration(p) ||
-			ts.isClassDeclaration(p) ||
-			ts.isInterfaceDeclaration(p) ||
-			ts.isTypeAliasDeclaration(p) ||
-			ts.isEnumDeclaration(p) ||
-			ts.isEnumMember(p) ||
-			ts.isParameter(p) ||
-			ts.isBindingElement(p) ||
-			ts.isFunctionExpression(p) ||
-			ts.isClassExpression(p) ||
-			ts.isMethodDeclaration(p) ||
-			ts.isPropertyDeclaration(p) ||
-			ts.isImportSpecifier(p) ||
-			ts.isImportClause(p) ||
-			ts.isNamespaceImport(p)) &&
-		p.name === node
-	) {
-		return true;
-	}
-	return false;
+	return p !== undefined && NAMED_DECLARATION.has(p.kind) && (p as ts.NamedDeclaration).name === node;
 }
 
 /** All occurrences of `name` as an identifier token in one code file. */
 export function identifierOccurrences(path: string, text: string, name: string): IdentifierOccurrence[] {
-	if (!isCodeFile(path) || !text.includes(name)) return [];
+	// No textual pre-filter: an escaped spelling does not contain `name` literally.
+	if (!isCodeFile(path)) return [];
 	const sf = ts.createSourceFile(path, text, ts.ScriptTarget.Latest, true, scriptKind(path));
 	const out: IdentifierOccurrence[] = [];
 	const visit = (node: ts.Node): void => {
@@ -95,18 +100,9 @@ export function identifierOccurrences(path: string, text: string, name: string):
 	return out.sort((a, b) => a.line - b.line || a.column - b.column);
 }
 
-/** Occurrences of `name` across every code file of one source in the snapshot. */
-export function occurrencesInSource(chunks: readonly ChunkRecord[], sourceId: string, name: string): IdentifierOccurrence[] {
-	const byPath = new Map<string, ChunkRecord[]>();
-	for (const c of chunks) {
-		if (c.source_id !== sourceId || !isCodeFile(c.path)) continue;
-		const list = byPath.get(c.path) ?? [];
-		list.push(c);
-		byPath.set(c.path, list);
-	}
+/** Occurrences of `name` across the given code files (full, verified texts of one source). */
+export function occurrencesInFiles(files: readonly SourceFileText[], name: string): IdentifierOccurrence[] {
 	const out: IdentifierOccurrence[] = [];
-	for (const [path, list] of [...byPath.entries()].sort((a, b) => (a[0] < b[0] ? -1 : 1))) {
-		out.push(...identifierOccurrences(path, fileTextFromChunks(list), name));
-	}
+	for (const f of [...files].sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0))) out.push(...identifierOccurrences(f.path, f.text, name));
 	return out;
 }

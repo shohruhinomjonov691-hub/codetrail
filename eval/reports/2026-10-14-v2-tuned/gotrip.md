@@ -1,4 +1,4 @@
-### gotrip — snapshot `14bcc5ca5560`, index `370fef9a01b0`
+### gotrip — snapshot `d75aaec92128`, index `e492467de717`
 
 Scoring: **anchor-line/required-groups v2** — evidence counts only when one retrieved chunk contains its exact anchor line; recall is over required groups (any alternative satisfies a group); optional evidence is reported, never in the denominator.
 

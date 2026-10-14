@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { CodeTrailError } from '../errors.js';
-import type { ChunkRecord, Manifest } from '../snapshot.js';
-import { isValidIdentifier, occurrencesInSource } from './identifiers.js';
+import type { ChunkRecord, Manifest, SourceFileText } from '../snapshot.js';
+import { isValidIdentifier, occurrencesInFiles } from './identifiers.js';
 import { declarationToken, expectedOccurrences } from './reference-scan.js';
 
 export const QUESTION_TYPES = ['locate', 'flow', 'auth', 'config', 'error', 'partial', 'unused', 'doc-vs-code', 'abstention'] as const;
@@ -120,9 +120,11 @@ export function anchorLines(e: Evidence, lines: SnapshotLines): number[] {
  * Every evidence item must point at an included file of the evaluated snapshot,
  * lie within it, and contain its single-line anchor. Required groups must be
  * non-empty; abstention questions have none; reference scans must name a
- * declaration line that contains the identifier. Returns all problems found.
+ * declaration line that contains the identifier. `sourceTexts` returns the full,
+ * verified texts of one source (it throws, failing closed, when they are not
+ * available). Returns all problems found.
  */
-export function validateFixture(fx: EvalFixture, manifest: Manifest, chunks: ChunkRecord[]): string[] {
+export function validateFixture(fx: EvalFixture, manifest: Manifest, chunks: ChunkRecord[], sourceTexts: (sourceId: string) => readonly SourceFileText[]): string[] {
 	const problems: string[] = [];
 	const ids = new Set<string>();
 	const lines = snapshotLines(chunks);
@@ -160,7 +162,7 @@ export function validateFixture(fx: EvalFixture, manifest: Manifest, chunks: Chu
 			if (!isValidIdentifier(r.identifier)) problems.push(`${q.id}: reference_scan identifier is not a JavaScript identifier`);
 			else {
 				// Same tokenization as the scanner: exactly one declaration-name token on the declared line.
-				const decl = declarationToken(occurrencesInSource(chunks, r.source_id, r.identifier), r);
+				const decl = declarationToken(occurrencesInFiles(sourceTexts(r.source_id), r.identifier), r);
 				if (decl.length !== 1) problems.push(`${q.id}: reference_scan expects one declaration of ${r.identifier} at ${r.declared_path}:${r.declared_line}, found ${decl.length}`);
 			}
 			const expect = expectedOccurrences(r);

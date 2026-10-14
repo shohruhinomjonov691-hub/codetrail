@@ -1,9 +1,9 @@
 {
   "scoring": "anchor-line/required-groups v2",
   "project": "ky",
-  "snapshot_id": "9d5e668f5c4729d890abf890",
-  "fixture_snapshot_id": "9d5e668f5c4729d890abf890",
-  "index_id": "9ab026fb373762c2651c892c",
+  "snapshot_id": "6b9989f36c61fdaf73687db7",
+  "fixture_snapshot_id": "6b9989f36c61fdaf73687db7",
+  "index_id": "3bc4cd734262293b7e23a485",
   "recipe": {
     "model": "Qwen3-Embedding-0.6B",
     "quant": "Q8_0",

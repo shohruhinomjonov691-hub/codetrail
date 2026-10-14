@@ -11,7 +11,7 @@ import { Registry } from '../src/registry.js';
 import { buildIndex, loadIndex } from '../src/retrieval/index.js';
 import { DEFAULT_TUNING, search } from '../src/retrieval/search.js';
 import { ftsQuery } from '../src/retrieval/text.js';
-import { createSnapshot, readSnapshot, type ChunkRecord } from '../src/snapshot.js';
+import { createSnapshot, readSnapshot, readSourceTexts, type SourceFileText } from '../src/snapshot.js';
 import { FAKE_MODEL_FILE, FAKE_MODEL_SHA256, startFakeLlama, type FakeLlama } from './fake-llama.js';
 import { makeRepo, tempDir } from './helpers.js';
 
@@ -78,23 +78,20 @@ describe('metrics (hand-computed, anchor-line scoring)', () => {
 });
 
 describe('identifier-occurrence scan', () => {
-	const c = (path: string, start: number, text: string, source_id = 'fe'): ChunkRecord => ({ path, start_line: start, end_line: start + text.split('\n').length - 1, text, source_id } as ChunkRecord);
-	it('counts identifier tokens outside the declaration token in one source', () => {
-		const chunks = [
-			c('m.ts', 10, 'export const START_X = gql`\n  startX\n`;'),
-			c('page.tsx', 1, "import { START_X as S } from './m';\nconst START_XY = 1;"),
-			c('other.ts', 1, 'START_X;', 'be'),
-		];
-		const r = scanReferences(chunks, { identifier: 'START_X', source_id: 'fe', declared_path: 'm.ts', declared_line: 10, expect_occurrences: 0 });
+	// Full file texts of one source (what readSourceTexts returns).
+	const f = (path: string, text: string): SourceFileText => ({ path, text });
+	it('counts identifier tokens outside the declaration token', () => {
+		const files = [f('m.ts', '\n'.repeat(9) + 'export const START_X = gql`\n  startX\n`;'), f('page.tsx', "import { START_X as S } from './m';\nconst START_XY = 1;")];
+		const r = scanReferences(files, { identifier: 'START_X', source_id: 'fe', declared_path: 'm.ts', declared_line: 10, expect_occurrences: 0 });
 		expect(r.kind).toBe('identifier-occurrences');
 		expect(r.declaration).toEqual({ path: 'm.ts', line: 10, column: 14 });
-		expect(r.occurrences).toEqual([{ path: 'page.tsx', line: 1, column: 10 }]); // START_XY is another identifier; other source ignored
+		expect(r.occurrences).toEqual([{ path: 'page.tsx', line: 1, column: 10 }]); // START_XY is another identifier
 		expect(r.passed).toBe(false);
-		expect(scanReferences(chunks.slice(0, 1), { identifier: 'START_X', source_id: 'fe', declared_path: 'm.ts', declared_line: 10, expect_occurrences: 0 }).passed).toBe(true);
+		expect(scanReferences(files.slice(0, 1), { identifier: 'START_X', source_id: 'fe', declared_path: 'm.ts', declared_line: 10, expect_occurrences: 0 }).passed).toBe(true);
 	});
 
 	it('fails when the declaration token is not found', () => {
-		const r = scanReferences([c('m.ts', 1, 'use(START_X);')], { identifier: 'START_X', source_id: 'fe', declared_path: 'm.ts', declared_line: 1, expect_occurrences: 1 });
+		const r = scanReferences([f('m.ts', 'use(START_X);')], { identifier: 'START_X', source_id: 'fe', declared_path: 'm.ts', declared_line: 1, expect_occurrences: 1 });
 		expect(r.declaration).toBeNull();
 		expect(r.passed).toBe(false);
 	});
@@ -130,7 +127,7 @@ describe('expected-range validation against the real snapshot', () => {
 			{ id: 'Q2', type: 'abstention', question: 'How is payment handled?', required: [], absence_evidence: [ev('src/tour.ts', 2, 2, 'draft')] },
 			{ id: 'Q3', type: 'unused', question: 'Is createTour used?', required: [[ev('src/tour.ts', 1, 1, 'createTour')]], reference_scan: { identifier: 'createTour', source_id: 'main', declared_path: 'src/tour.ts', declared_line: 1, expect_occurrences: 0 } },
 		]);
-		expect(validateFixture(good, manifest, chunks)).toEqual([]);
+		expect(validateFixture(good, manifest, chunks, (src) => readSourceTexts(c.cfg.dataDir, 'app', c.snapshotId, src))).toEqual([]);
 		const bad = fixture(c.snapshotId, [
 			{ id: 'B1', type: 'auth', question: 'q', required: [[ev('src/missing.ts', 1, 2, 'abc')]] },
 			{ id: 'B2', type: 'auth', question: 'q', required: [[ev('.env', 1, 1, 'X=1')]] },
@@ -145,7 +142,7 @@ describe('expected-range validation against the real snapshot', () => {
 			{ id: 'B11', type: 'locate', question: 'q', required: [[ev('src/auth.ts', 1, 1, 'checkToken')]], optional: [ev('src/auth.ts', 1, 1, 'nope-not-here')] },
 			{ id: 'B12', type: 'unused', question: 'q', required: [[ev('src/auth.ts', 1, 1, 'checkToken')]], reference_scan: { identifier: 'checkToken', source_id: 'main', declared_path: 'src/auth.ts', declared_line: 2, expect_usages: 0 } },
 		]);
-		const problems = validateFixture(bad, manifest, chunks).join('\n');
+		const problems = validateFixture(bad, manifest, chunks, (src) => readSourceTexts(c.cfg.dataDir, 'app', c.snapshotId, src)).join('\n');
 		for (const fragment of [
 			'B1 required[1] main:src/missing.ts:L1-2: file not in snapshot',
 			'B2 required[1] main:.env:L1-1: file is excluded',

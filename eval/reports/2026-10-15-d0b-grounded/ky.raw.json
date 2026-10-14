@@ -1,0 +1,484 @@
+{
+  "project": "ky",
+  "snapshot": "6b9989f36c61fdaf73687db7",
+  "k": 8,
+  "selection": "rank",
+  "evidenceTokenBudget": 3000,
+  "maxOutputTokens": 512,
+  "system": "You answer questions about a codebase using ONLY the numbered excerpts given by the user.\nReply with JSON only: {\"status\": \"answered\" | \"insufficient_evidence\", \"claims\": [...]}.\nEach claim has: \"text\" — one short factual statement that answers part of the question; \"source_id\" — the excerpt id, like \"S2\";\n\"lines\" — {\"start\": n, \"end\": m}, line numbers shown in that excerpt that support the claim; \"quote\" — text copied exactly from those lines.\nOnly make claims that the cited lines directly support. Do not use outside knowledge.\nIf the excerpts do not answer the question, reply {\"status\": \"insufficient_evidence\", \"claims\": []}. At most 6 claims.",
+  "schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": [
+      "status",
+      "claims"
+    ],
+    "properties": {
+      "status": {
+        "type": "string",
+        "enum": [
+          "answered",
+          "insufficient_evidence"
+        ]
+      },
+      "claims": {
+        "type": "array",
+        "maxItems": 6,
+        "items": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "text",
+            "source_id",
+            "lines",
+            "quote"
+          ],
+          "properties": {
+            "text": {
+              "type": "string"
+            },
+            "source_id": {
+              "type": "string",
+              "pattern": "^S[0-9]+$"
+            },
+            "lines": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "start",
+                "end"
+              ],
+              "properties": {
+                "start": {
+                  "type": "integer"
+                },
+                "end": {
+                  "type": "integer"
+                }
+              }
+            },
+            "quote": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    }
+  },
+  "results": [
+    {
+      "id": "K2",
+      "type": "config",
+      "question": "Which HTTP methods and status codes are retried by default, and how many times?",
+      "retrieval": {
+        "excerpts": [
+          {
+            "id": "S1",
+            "path": "lib:readme.md",
+            "lines": "L300-L328 (29 lines)"
+          },
+          {
+            "id": "S2",
+            "path": "lib:source/types/retry.ts",
+            "lines": "L21-L91 (56 lines)"
+          },
+          {
+            "id": "S3",
+            "path": "lib:test/retry-decisions.ts",
+            "lines": "L176-L198 (23 lines)"
+          },
+          {
+            "id": "S4",
+            "path": "lib:test/retry.ts",
+            "lines": "L340-L375 (25 lines)"
+          },
+          {
+            "id": "S5",
+            "path": "lib:test/retry.ts",
+            "lines": "L2170-L2271 (51 lines)"
+          },
+          {
+            "id": "S6",
+            "path": "lib:test/retry.ts",
+            "lines": "L1854-L1928 (29 lines)"
+          }
+        ],
+        "dropped": [
+          {
+            "path": "test/retry.ts",
+            "lines": "L1750-L1767 (18 lines)",
+            "tokens": 215,
+            "reason": "token budget"
+          },
+          {
+            "path": "test/retry.ts",
+            "lines": "L2057-L2124 (56 lines)",
+            "tokens": 690,
+            "reason": "token budget"
+          }
+        ],
+        "evidenceTokens": 2927,
+        "promptTokens": 3119,
+        "outputTokens": 512,
+        "ttftMs": 4706,
+        "totalMs": 13241,
+        "serverPeakRssMb": 1354,
+        "valid": false,
+        "rejectReasons": [
+          "not valid JSON"
+        ],
+        "status": null,
+        "raw": "{\n  \"status\": \"answered\",\n  \"claims\": [\n    {\n      \"text\": \"The `retryOnTimeout` option determines whether to retry when a request times out before a response is returned. By default, retries are not triggered following a timeout.\",\n      \"source_id\": \"S1\",\n      \"lines\": {\"start\": 301, \"end\": 303},\n      \"quote\": \"The `retryOnTimeout` option determines whether to retry when a request times out before a response is returned. By default, retries are not triggered following a timeout.\"\n    },\n    {\n      \"text\": \"The `shouldRetry` option provides custom retry logic that takes precedence over the default retry checks (`retryOnTimeout`, status code checks, etc.) for retriable methods. It is only called after the retry limit and method checks pass.\",\n      \"source_id\": \"S1\",\n      \"lines\": {\"start\": 304, \"end\": 306},\n      \"quote\": \"The `shouldRetry` option provides custom retry logic that takes precedence over the default retry checks (`retryOnTimeout`, status code checks, etc.) for retriable methods. It is only called after the retry limit and method checks pass.\"\n    },\n    {\n      \"text\": \"The function receives a state object with the error and retry count (starts at 1 for the first retry), and should return: true to force a retry (bypasses `retryOnTimeout`, status code checks, and other default validations), false to prevent a retry (no retry will occur), undefined (or nothing) to use the default retry logic (`retryOnTimeout`, status codes, network errors). Unrecognized error types are not retried.\",\n      \"source_id\": \"S1\",\n      \"lines\": {\"start\": 310, \"end\": 313},\n      \"quote\": \"The function receives a state object with the error and retry count (starts at 1 for the first retry), and should return: true to force a retry (bypasses `retryOnTimeout`, status code checks, and other default validations), false to prevent a retry (no retry will occur), undefined (or nothing) to use the default retry logic (`retryOnTimeout`, status codes, network errors). Unrecognized error types are not retried.\"\n    },\n    {\n      \"text\": \"The `retry` option allows you to configure the retry behavior for HTTP requests. It includes"
+      },
+      "golden": {
+        "excerpts": [
+          {
+            "id": "S1",
+            "path": "lib:source/utils/normalize.ts",
+            "lines": "L15-L28 (12 lines)"
+          }
+        ],
+        "dropped": [],
+        "evidenceTokens": 188,
+        "promptTokens": 380,
+        "outputTokens": 181,
+        "ttftMs": 327,
+        "totalMs": 3047,
+        "serverPeakRssMb": 1355,
+        "valid": false,
+        "rejectReasons": [
+          "claim 1: quote not found in S1:L25-L28"
+        ],
+        "status": "answered",
+        "raw": "{\n  \"status\": \"answered\",\n  \"claims\": [\n    {\n      \"text\": \"The default retry options include a limit of 2 retries, a list of retryable HTTP methods (GET, PUT, HEAD, DELETE, OPTIONS, TRACE, QUERY), and a list of retryable HTTP status codes (408, 413, 429, 500, 502, 503, 504).\",\n      \"source_id\": \"S1\",\n      \"lines\": {\n        \"start\": 25,\n        \"end\": 28\n      },\n      \"quote\": \"const defaultRetryOptions: InternalRetryOptions = {\\n  limit: 2,\\n  methods: retryMethods,\\n  statusCodes: retryStatusCodes,\\n}\"\n    }\n  ]\n}"
+      }
+    },
+    {
+      "id": "K3",
+      "type": "flow",
+      "question": "How are Retry-After and rate-limit headers used when retrying?",
+      "retrieval": {
+        "excerpts": [
+          {
+            "id": "S1",
+            "path": "lib:source/core/retry-timing.ts",
+            "lines": "L25-L47 (23 lines)"
+          },
+          {
+            "id": "S2",
+            "path": "lib:readme.md",
+            "lines": "L300-L355 (24 lines)"
+          },
+          {
+            "id": "S3",
+            "path": "lib:test/retry-timing.ts",
+            "lines": "L81-L110 (30 lines)"
+          },
+          {
+            "id": "S4",
+            "path": "lib:test/retry.ts",
+            "lines": "L738-L836 (29 lines)"
+          },
+          {
+            "id": "S5",
+            "path": "lib:test/retry.ts",
+            "lines": "L514-L619 (56 lines)"
+          }
+        ],
+        "dropped": [
+          {
+            "path": "test/retry.ts",
+            "lines": "L456-L512 (52 lines)",
+            "tokens": 605,
+            "reason": "token budget"
+          },
+          {
+            "path": "test/retry.ts",
+            "lines": "L845-L899 (39 lines)",
+            "tokens": 496,
+            "reason": "token budget"
+          },
+          {
+            "path": "test/retry.ts",
+            "lines": "L4874-L4980 (35 lines)",
+            "tokens": 625,
+            "reason": "token budget"
+          }
+        ],
+        "evidenceTokens": 2572,
+        "promptTokens": 2761,
+        "outputTokens": 512,
+        "ttftMs": 4107,
+        "totalMs": 12557,
+        "serverPeakRssMb": 1354,
+        "valid": false,
+        "rejectReasons": [
+          "not valid JSON"
+        ],
+        "status": null,
+        "raw": "{\n  \"status\": \"answered\",\n  \"claims\": [\n    {\n      \"text\": \"The `retryOnTimeout` option determines whether to retry when a request times out before a response is returned.\",\n      \"source_id\": \"S2\",\n      \"lines\": {\"start\": 300, \"end\": 303},\n      \"quote\": \"The `retryOnTimeout` option determines whether to retry when a request times out before a response is returned. By default, retries are not triggered following a [timeout](#timeout). Timeouts while reading a response body through Ky shortcut methods are not retried because the response has already been received.\"\n    },\n    {\n      \"text\": \"The `shouldRetry` option provides custom retry logic that **takes precedence over the default retry checks** (`retryOnTimeout`, status code checks, etc.) for retriable methods.\",\n      \"source_id\": \"S2\",\n      \"lines\": {\"start\": 305, \"end\": 309},\n      \"quote\": \"The `shouldRetry` option provides custom retry logic that **takes precedence over the default retry checks** (`retryOnTimeout`, status code checks, etc.) for retriable methods. It is only called after the retry limit and method checks pass.\"\n    },\n    {\n      \"text\": \"The function receives a state object with the error and retry count (starts at 1 for the first retry), and should return: `true` to force a retry (bypasses `retryOnTimeout`, status code checks, and other default validations), `false` to prevent a retry (no retry will occur), or `undefined` (or nothing) to use the default retry logic (`retryOnTimeout`, status codes, network errors). Unrecognized error types are not retried.\",\n      \"source_id\": \"S2\",\n      \"lines\": {\"start\": 311, \"end\": 314},\n      \"quote\": \"The function receives a state object with the error and retry count (starts at 1 for the first retry), and should return: `true` to force a retry (bypasses `retryOnTimeout`, status code checks, and other default validations), `false` to prevent a retry (no retry will occur), or `undefined` (or nothing) to use the default retry logic (`retryOnTimeout`, status codes, network errors). Unrecognized error types are not retried.\"\n    },\n    {\n      \""
+      },
+      "golden": {
+        "excerpts": [
+          {
+            "id": "S1",
+            "path": "lib:source/core/retry-timing.ts",
+            "lines": "L24-L28 (5 lines)"
+          },
+          {
+            "id": "S2",
+            "path": "lib:source/core/Ky.ts",
+            "lines": "L737-L741 (5 lines)"
+          }
+        ],
+        "dropped": [],
+        "evidenceTokens": 166,
+        "promptTokens": 355,
+        "outputTokens": 172,
+        "ttftMs": 286,
+        "totalMs": 2863,
+        "serverPeakRssMb": 1354,
+        "valid": true,
+        "rejectReasons": [],
+        "status": "answered",
+        "raw": "{\n  \"status\": \"answered\",\n  \"claims\": [\n    {\n      \"text\": \"Retry-After header is used to specify the time after which a request should be retried.\",\n      \"source_id\": \"S1\",\n      \"lines\": {\"start\": 26, \"end\": 28},\n      \"quote\": \"return {value: retryAfter, allowTimestamp: false};\"\n    },\n    {\n      \"text\": \"Rate-limit headers are used to limit the number of requests a client can make within a given time period.\",\n      \"source_id\": \"S2\",\n      \"lines\": {\"start\": 737, \"end\": 741},\n      \"quote\": \"const retryTimingHeader = getRetryTimingHeader(error.response.headers);\"\n    }\n  ]\n}"
+      }
+    },
+    {
+      "id": "K4",
+      "type": "locate",
+      "question": "How is the request timeout implemented and which error does it raise?",
+      "retrieval": {
+        "excerpts": [
+          {
+            "id": "S1",
+            "path": "lib:readme.md",
+            "lines": "L415-L451 (30 lines)"
+          },
+          {
+            "id": "S2",
+            "path": "lib:source/utils/timeout.ts",
+            "lines": "L10-L36 (27 lines)"
+          },
+          {
+            "id": "S3",
+            "path": "lib:test/retry.ts",
+            "lines": "L1063-L1158 (27 lines)"
+          },
+          {
+            "id": "S4",
+            "path": "lib:test/retry.ts",
+            "lines": "L4801-L4872 (60 lines)"
+          },
+          {
+            "id": "S5",
+            "path": "lib:readme.md",
+            "lines": "L1312-L1341 (30 lines)"
+          }
+        ],
+        "dropped": [
+          {
+            "path": "test/validation.ts",
+            "lines": "L6-L124 (60 lines)",
+            "tokens": 905,
+            "reason": "token budget"
+          },
+          {
+            "path": "test/retry.ts",
+            "lines": "L2597-L2691 (30 lines)",
+            "tokens": 372,
+            "reason": "token budget"
+          },
+          {
+            "path": "source/core/Ky.ts",
+            "lines": "L1125-L1214 (35 lines)",
+            "tokens": 507,
+            "reason": "token budget"
+          }
+        ],
+        "evidenceTokens": 2810,
+        "promptTokens": 2998,
+        "outputTokens": 248,
+        "ttftMs": 4478,
+        "totalMs": 8579,
+        "serverPeakRssMb": 1428,
+        "valid": false,
+        "rejectReasons": [
+          "claim 1: line 415 was not shown in S2",
+          "claim 2: line 422 was not shown in S2"
+        ],
+        "status": "answered",
+        "raw": "{\n  \"status\": \"answered\",\n  \"claims\": [\n    {\n      \"text\": \"The request timeout is implemented in the `totalTimeout` option.\",\n      \"source_id\": \"S2\",\n      \"lines\": {\"start\": 415, \"end\": 421},\n      \"quote\": \"Type: `number | false`\\\\nDefault: `false`\\\\nOverall timeout in milliseconds for the entire operation, including retries and delays. Throws a `TimeoutError` if exceeded. Must be a non-negative number or `false`, or a `TypeError` is thrown. A value greater than 2147483647, `Infinity` included, throws a `RangeError`.\"\n    },\n    {\n      \"text\": \"The error raised when the request timeout is exceeded is `TimeoutError`.\",\n      \"source_id\": \"S2\",\n      \"lines\": {\"start\": 422, \"end\": 424},\n      \"quote\": \"If set to `false` or not specified, there is no overall timeout.\\\\nIf exceeded, throws a `TimeoutError`.\"\n    }\n  ]\n}"
+      },
+      "golden": {
+        "excerpts": [
+          {
+            "id": "S1",
+            "path": "lib:source/utils/timeout.ts",
+            "lines": "L20-L29 (10 lines)"
+          }
+        ],
+        "dropped": [],
+        "evidenceTokens": 95,
+        "promptTokens": 283,
+        "outputTokens": 180,
+        "ttftMs": 199,
+        "totalMs": 2889,
+        "serverPeakRssMb": 1422,
+        "valid": false,
+        "rejectReasons": [
+          "claim 1: quote not found in S1:L21-L28",
+          "claim 2: quote not found in S1:L28-L28"
+        ],
+        "status": "answered",
+        "raw": "{\n  \"status\": \"answered\",\n  \"claims\": [\n    {\n      \"text\": \"The request timeout is implemented in the `timeout.ts` file.\",\n      \"source_id\": \"S1\",\n      \"lines\": {\"start\": 21, \"end\": 28},\n      \"quote\": \"try { return await new Promise((resolve, reject) => { timeoutId = setTimeout(() => { timedOut = true; abortController?.abort(); reject(new TimeoutError(request)); }, options.timeout); }\"\n    },\n    {\n      \"text\": \"The error raised when the request times out is `TimeoutError`.\",\n      \"source_id\": \"S1\",\n      \"lines\": {\"start\": 28, \"end\": 28},\n      \"quote\": \"reject(new TimeoutError(request)); }\"\n    }\n  ]\n}"
+      }
+    },
+    {
+      "id": "K10",
+      "type": "config",
+      "question": "What is the default request timeout?",
+      "retrieval": {
+        "excerpts": [
+          {
+            "id": "S1",
+            "path": "lib:source/utils/timeout.ts",
+            "lines": "L10-L36 (27 lines)"
+          },
+          {
+            "id": "S2",
+            "path": "lib:test-d/timeout-options.ts",
+            "lines": "L2-L8 (7 lines)"
+          },
+          {
+            "id": "S3",
+            "path": "lib:source/core/Ky.ts",
+            "lines": "L548-L588 (29 lines)"
+          },
+          {
+            "id": "S4",
+            "path": "lib:readme.md",
+            "lines": "L389-L413 (22 lines)"
+          },
+          {
+            "id": "S5",
+            "path": "lib:readme.md",
+            "lines": "L415-L470 (27 lines)"
+          },
+          {
+            "id": "S6",
+            "path": "lib:source/utils/normalize.ts",
+            "lines": "L25-L35 (7 lines)"
+          },
+          {
+            "id": "S7",
+            "path": "lib:test/main.ts",
+            "lines": "L1462-L1482 (21 lines)"
+          },
+          {
+            "id": "S8",
+            "path": "lib:source/core/Ky.ts",
+            "lines": "L217-L218 (2 lines)"
+          }
+        ],
+        "dropped": [],
+        "evidenceTokens": 2304,
+        "promptTokens": 2486,
+        "outputTokens": 339,
+        "ttftMs": 3629,
+        "totalMs": 9179,
+        "serverPeakRssMb": 1380,
+        "valid": false,
+        "rejectReasons": [
+          "claim 1: quote not found in S1:L16-L17",
+          "claim 2: quote not found in S1:L17-L18",
+          "claim 3: quote not found in S1:L18-L19",
+          "claim 4: quote not found in S1:L19-L20"
+        ],
+        "status": "answered",
+        "raw": "{\n  \"status\": \"answered\",\n  \"claims\": [\n    {\n      \"text\": \"The default request timeout is 10000 milliseconds.\",\n      \"source_id\": \"S1\",\n      \"lines\": {\"start\": 16, \"end\": 17},\n      \"quote\": \"export default async function timeout(...args) {\"\n    },\n    {\n      \"text\": \"The default request timeout is 10000 milliseconds.\",\n      \"source_id\": \"S1\",\n      \"lines\": {\"start\": 17, \"end\": 18},\n      \"quote\": \"return await new Promise((resolve, reject) => {\"\n    },\n    {\n      \"text\": \"The default request timeout is 10000 milliseconds.\",\n      \"source_id\": \"S1\",\n      \"lines\": {\"start\": 18, \"end\": 19},\n      \"quote\": \"timeoutId = setTimeout(() => {\"\n    },\n    {\n      \"text\": \"The default request timeout is 10000 milliseconds.\",\n      \"source_id\": \"S1\",\n      \"lines\": {\"start\": 19, \"end\": 20},\n      \"quote\": \"timedOut = false;\"\n    },\n    {\n      \"text\": \"The default request timeout is 10000 milliseconds.\",\n      \"source_id\": \"S1\",\n      \"lines\": {\"start\": 20, \"end\": 21},\n      \"quote\": \"return await new Promise((resolve, reject) => {\"\n    }\n  ]\n}"
+      },
+      "golden": {
+        "excerpts": [
+          {
+            "id": "S1",
+            "path": "lib:source/core/Ky.ts",
+            "lines": "L216-L220 (5 lines)"
+          }
+        ],
+        "dropped": [],
+        "evidenceTokens": 133,
+        "promptTokens": 315,
+        "outputTokens": 128,
+        "ttftMs": 280,
+        "totalMs": 2197,
+        "serverPeakRssMb": 1344,
+        "valid": true,
+        "rejectReasons": [],
+        "status": "answered",
+        "raw": "{\n  \"status\": \"answered\",\n  \"claims\": [\n    {\n      \"text\": \"The default request timeout is 10_000 milliseconds.\",\n      \"source_id\": \"S1\",\n      \"lines\": {\n        \"start\": 218,\n        \"end\": 219\n      },\n      \"quote\": \"const withAttemptDefaults = ({throwHttpErrors = true, timeout = 10_000, fetch = globalThis.fetch.bind(globalThis)}: Options) => ({throwHttpErrors, timeout, fetch});\"\n    }\n  ]\n}"
+      }
+    },
+    {
+      "id": "KA1",
+      "type": "abstention",
+      "question": "How does ky cache responses in IndexedDB?",
+      "retrieval": {
+        "excerpts": [
+          {
+            "id": "S1",
+            "path": "lib:readme.md",
+            "lines": "L1796-L1800 (5 lines)"
+          },
+          {
+            "id": "S2",
+            "path": "lib:readme.md",
+            "lines": "L1879-L1883 (5 lines)"
+          },
+          {
+            "id": "S3",
+            "path": "lib:test/context.ts",
+            "lines": "L299-L319 (17 lines)"
+          },
+          {
+            "id": "S4",
+            "path": "lib:readme.md",
+            "lines": "L485-L521 (10 lines)"
+          },
+          {
+            "id": "S5",
+            "path": "lib:test/request-construction.ts",
+            "lines": "L361-L395 (10 lines)"
+          },
+          {
+            "id": "S6",
+            "path": "lib:test/context.ts",
+            "lines": "L329-L333 (5 lines)"
+          },
+          {
+            "id": "S7",
+            "path": "lib:readme.md",
+            "lines": "L1685-L1689 (5 lines)"
+          },
+          {
+            "id": "S8",
+            "path": "lib:readme.md",
+            "lines": "L438-L459 (22 lines)"
+          }
+        ],
+        "dropped": [],
+        "evidenceTokens": 1535,
+        "promptTokens": 1720,
+        "outputTokens": 22,
+        "ttftMs": 2376,
+        "totalMs": 2659,
+        "serverPeakRssMb": 1353,
+        "valid": true,
+        "rejectReasons": [],
+        "status": "insufficient_evidence",
+        "raw": "{\n  \"status\": \"insufficient_evidence\",\n  \"claims\": []\n}"
+      },
+      "golden": null
+    }
+  ]
+}

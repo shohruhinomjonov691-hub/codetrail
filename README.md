@@ -205,6 +205,8 @@ D0 was a benchmark only; there is no answer generation in CodeTrail yet. Qwen2.5
 
 On the development Mac (not a server), with about 5.9k context tokens, the first token took about 10 s and the server used about 1.3 GB RSS. **The model is not sufficient**, and D1 must enforce citations and abstention mechanically. Details: `eval/reports/2026-10-15-d0-llm/`.
 
+**D0b (2026-10-15):** the same model with compact line-numbered excerpts, schema-constrained JSON claims (`status` + `claims[{text, source_id, lines, quote}]`) and a fail-closed validator (`src/eval/grounded.ts`). End-to-end on the default retrieval: **0/10** answerable questions answered correctly and validly, and 2/3 unanswerable questions abstained. With golden evidence, which is a diagnostic only, 2/10. Three answers passed the validator although their claims were false, so a valid quote does not prove a claim. TTFT fell to about 4.4 s at about 2.9k prompt tokens (Mac). Details: `eval/reports/2026-10-15-d0b-grounded/`.
+
 ## Support boundaries
 
 - **Languages:** only TypeScript/JavaScript code is chunked by AST. Markdown, JSON, YAML and GraphQL are chunked as text. No other languages are supported.

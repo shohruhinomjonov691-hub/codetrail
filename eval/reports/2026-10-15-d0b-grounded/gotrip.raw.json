@@ -1,0 +1,780 @@
+{
+  "project": "gotrip",
+  "snapshot": "d75aaec921284e35893092a7",
+  "k": 8,
+  "selection": "rank",
+  "evidenceTokenBudget": 3000,
+  "maxOutputTokens": 512,
+  "system": "You answer questions about a codebase using ONLY the numbered excerpts given by the user.\nReply with JSON only: {\"status\": \"answered\" | \"insufficient_evidence\", \"claims\": [...]}.\nEach claim has: \"text\" — one short factual statement that answers part of the question; \"source_id\" — the excerpt id, like \"S2\";\n\"lines\" — {\"start\": n, \"end\": m}, line numbers shown in that excerpt that support the claim; \"quote\" — text copied exactly from those lines.\nOnly make claims that the cited lines directly support. Do not use outside knowledge.\nIf the excerpts do not answer the question, reply {\"status\": \"insufficient_evidence\", \"claims\": []}. At most 6 claims.",
+  "schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": [
+      "status",
+      "claims"
+    ],
+    "properties": {
+      "status": {
+        "type": "string",
+        "enum": [
+          "answered",
+          "insufficient_evidence"
+        ]
+      },
+      "claims": {
+        "type": "array",
+        "maxItems": 6,
+        "items": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "text",
+            "source_id",
+            "lines",
+            "quote"
+          ],
+          "properties": {
+            "text": {
+              "type": "string"
+            },
+            "source_id": {
+              "type": "string",
+              "pattern": "^S[0-9]+$"
+            },
+            "lines": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "start",
+                "end"
+              ],
+              "properties": {
+                "start": {
+                  "type": "integer"
+                },
+                "end": {
+                  "type": "integer"
+                }
+              }
+            },
+            "quote": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    }
+  },
+  "results": [
+    {
+      "id": "T1",
+      "type": "flow",
+      "question": "When a traveller sends an inquiry to a guide from a tour page, what happens in the frontend and the backend?",
+      "retrieval": {
+        "excerpts": [
+          {
+            "id": "S1",
+            "path": "frontend:libs/components/cs/Faq.tsx",
+            "lines": "L50-L142 (40 lines)"
+          },
+          {
+            "id": "S2",
+            "path": "frontend:public/locales/ko/common.json",
+            "lines": "L388-L422 (26 lines)"
+          },
+          {
+            "id": "S3",
+            "path": "frontend:public/locales/en/common.json",
+            "lines": "L388-L422 (26 lines)"
+          },
+          {
+            "id": "S4",
+            "path": "frontend:public/locales/ru/common.json",
+            "lines": "L388-L422 (26 lines)"
+          },
+          {
+            "id": "S5",
+            "path": "frontend:public/locales/ko/common.json",
+            "lines": "L825-L858 (20 lines)"
+          }
+        ],
+        "dropped": [
+          {
+            "path": "docs/ai/COMPLETED_TASKS.md",
+            "lines": "L451-L480 (30 lines)",
+            "tokens": 586,
+            "reason": "token budget"
+          },
+          {
+            "path": "README.md",
+            "lines": "L1-L83 (29 lines)",
+            "tokens": 613,
+            "reason": "token budget"
+          },
+          {
+            "path": "apps/gotrip-api/src/components/notification/notification.service.ts",
+            "lines": "L120-L149 (30 lines)",
+            "tokens": 539,
+            "reason": "token budget"
+          }
+        ],
+        "evidenceTokens": 2592,
+        "promptTokens": 2790,
+        "outputTokens": 486,
+        "ttftMs": 4586,
+        "totalMs": 12565,
+        "serverPeakRssMb": 1426,
+        "valid": true,
+        "rejectReasons": [],
+        "status": "answered",
+        "raw": "{\n  \"status\": \"answered\",\n  \"claims\": [\n    {\n      \"text\": \"When a traveller sends an inquiry to a guide from a tour page, the frontend displays a section for the guide to respond to the inquiry.\",\n      \"source_id\": \"S1\",\n      \"lines\": {\"start\": 133, \"end\": 142},\n      \"quote\": \"The Help Center groups current notices under FAQ, Terms, and Inquiry so you can find the relevant guidance quickly.\"\n    },\n    {\n      \"text\": \"When a traveller sends an inquiry to a guide from a tour page, the frontend displays a section for the guide to respond to the inquiry.\",\n      \"source_id\": \"S1\",\n      \"lines\": {\"start\": 133, \"end\": 142},\n      \"quote\": \"The Help Center groups current notices under FAQ, Terms, and Inquiry so you can find the relevant guidance quickly.\"\n    },\n    {\n      \"text\": \"When a traveller sends an inquiry to a guide from a tour page, the frontend displays a section for the guide to respond to the inquiry.\",\n      \"source_id\": \"S1\",\n      \"lines\": {\"start\": 133, \"end\": 142},\n      \"quote\": \"The Help Center groups current notices under FAQ, Terms, and Inquiry so you can find the relevant guidance quickly.\"\n    },\n    {\n      \"text\": \"When a traveller sends an inquiry to a guide from a tour page, the frontend displays a section for the guide to respond to the inquiry.\",\n      \"source_id\": \"S1\",\n      \"lines\": {\"start\": 133, \"end\": 142},\n      \"quote\": \"The Help Center groups current notices under FAQ, Terms, and Inquiry so you can find the relevant guidance quickly.\"\n    },\n    {\n      \"text\": \"When a traveller sends an inquiry to a guide from a tour page, the frontend displays a section for the guide to respond to the inquiry.\",\n      \"source_id\": \"S1\",\n      \"lines\": {\"start\": 133, \"end\": 142},\n      \"quote\": \"The Help Center groups current notices under FAQ, Terms, and Inquiry so you can find the relevant guidance quickly.\"\n    }\n  ]\n}"
+      },
+      "golden": {
+        "excerpts": [
+          {
+            "id": "S1",
+            "path": "frontend:pages/tour/detail.tsx",
+            "lines": "L234-L243 (10 lines)"
+          },
+          {
+            "id": "S2",
+            "path": "backend:apps/gotrip-api/src/components/notification/notification.resolver.ts",
+            "lines": "L32-L36 (5 lines)"
+          },
+          {
+            "id": "S3",
+            "path": "backend:apps/gotrip-api/src/components/notification/notification.service.ts",
+            "lines": "L124-L128 (5 lines)"
+          }
+        ],
+        "dropped": [],
+        "evidenceTokens": 340,
+        "promptTokens": 537,
+        "outputTokens": 507,
+        "ttftMs": 549,
+        "totalMs": 8548,
+        "serverPeakRssMb": 1497,
+        "valid": false,
+        "rejectReasons": [
+          "claim 1: quote not found in S1:L237-L243",
+          "claim 2: quote not found in S2:L32-L34",
+          "claim 3: quote not found in S3:L124-L128"
+        ],
+        "status": "answered",
+        "raw": "{\n  \"status\": \"answered\",\n  \"claims\": [\n    {\n      \"text\": \"When a traveller sends an inquiry to a guide from a tour page, the frontend handles the contact agent request by calling the `contactAgentHandler` function.\",\n      \"source_id\": \"S1\",\n      \"lines\": {\"start\": 237, \"end\": 243},\n      \"quote\": \"237|  try { 238|  if (!tourId) return; 239|  if (!user?._id) throw new Error(Message.NOT_AUTHENTICATED); 240|  if (!contactMessage.trim()) return; 241|  await contactAgent({ variables: { input: { tourId, message: contactMessage.trim() } } }); 242|  setContactSent(true); 243|  setContactMessage('');\"\n    },\n    {\n      \"text\": \"The backend handles the contact agent request by calling the `contactAgent` function in the `notification.resolver.ts` file.\",\n      \"source_id\": \"S2\",\n      \"lines\": {\"start\": 32, \"end\": 34},\n      \"quote\": \"32|  @UseGuards(AuthGuard) 33|  @Mutation(() => Notification) 34|  public async contactAgent(35|  @Args('input') input: ContactAgentInput, 36|  @AuthMember('_id') memberId: mongoose.ObjectId, \"\n    },\n    {\n      \"text\": \"The backend handles the contact agent request by calling the `contactAgent` function in the `notification.service.ts` file.\",\n      \"source_id\": \"S3\",\n      \"lines\": {\"start\": 124, \"end\": 128},\n      \"quote\": \"124|  * name and key details, and the notification links straight to it. 125|  */ 126|  public async contactAgent(memberId: ObjectId, tourId: ObjectId, message: string): Promise<Notification> { 127|  const tour = await this.tourModel.findOne({ _id: tourId, tourStatus: TourStatus.ACTIVE }).exec(); 128|  if (!tour) throw new InternalServerErrorException(Message.NO_DATA_FOUND); \"\n    }\n  ]\n}"
+      }
+    },
+    {
+      "id": "T4",
+      "type": "auth",
+      "question": "Where does AuthGuard get the token from and how is it verified?",
+      "retrieval": {
+        "excerpts": [
+          {
+            "id": "S1",
+            "path": "backend:apps/gotrip-api/src/components/auth/guards/auth.guard.ts",
+            "lines": "L6-L24 (19 lines)"
+          },
+          {
+            "id": "S2",
+            "path": "backend:apps/gotrip-api/src/components/auth/guards/roles.guard.spec.ts",
+            "lines": "L2-L55 (51 lines)"
+          },
+          {
+            "id": "S3",
+            "path": "backend:apps/gotrip-api/src/components/auth/guards/without.guard.ts",
+            "lines": "L5-L25 (21 lines)"
+          },
+          {
+            "id": "S4",
+            "path": "backend:apps/gotrip-api/src/components/auth/guards/roles.guard.ts",
+            "lines": "L7-L33 (27 lines)"
+          },
+          {
+            "id": "S5",
+            "path": "backend:apps/gotrip-api/src/components/conversation/conversation.resolver.spec.ts",
+            "lines": "L16-L60 (27 lines)"
+          },
+          {
+            "id": "S6",
+            "path": "frontend:docs/ai/COMPLETED_TASKS.md",
+            "lines": "L127-L155 (18 lines)"
+          }
+        ],
+        "dropped": [
+          {
+            "path": "libs/__tests__/messagingSocket.test.js",
+            "lines": "L75-L124 (30 lines)",
+            "tokens": 359,
+            "reason": "token budget"
+          },
+          {
+            "path": "docs/ai/FRONTEND_REPORT.md",
+            "lines": "L231-L248 (18 lines)",
+            "tokens": 475,
+            "reason": "token budget"
+          }
+        ],
+        "evidenceTokens": 2702,
+        "promptTokens": 2891,
+        "outputTokens": 167,
+        "ttftMs": 4441,
+        "totalMs": 7300,
+        "serverPeakRssMb": 1435,
+        "valid": false,
+        "rejectReasons": [
+          "claim 1: quote not found in S1:L15-L17",
+          "claim 2: quote not found in S1:L18-L20"
+        ],
+        "status": "answered",
+        "raw": "{\n  \"status\": \"answered\",\n  \"claims\": [\n    {\n      \"text\": \"AuthGuard gets the token from the `Authorization` header in the request.\",\n      \"source_id\": \"S1\",\n      \"lines\": {\"start\": 15, \"end\": 17},\n      \"quote\": \"const bearerToken = request.headers.authorization;\"\n    },\n    {\n      \"text\": \"The token is verified by checking if it is present and then retrieving the auth member from the AuthService.\",\n      \"source_id\": \"S1\",\n      \"lines\": {\"start\": 18, \"end\": 20},\n      \"quote\": \"const token = bearerToken.split(' ')[1], authMember = await this.authService.retrieveAuthMember(token);\"\n    }\n  ]\n}"
+      },
+      "golden": {
+        "excerpts": [
+          {
+            "id": "S1",
+            "path": "backend:apps/gotrip-api/src/components/auth/guards/auth.guard.ts",
+            "lines": "L12-L20 (9 lines)"
+          },
+          {
+            "id": "S2",
+            "path": "backend:apps/gotrip-api/src/components/auth/auth.service.ts",
+            "lines": "L42-L46 (5 lines)"
+          }
+        ],
+        "dropped": [],
+        "evidenceTokens": 207,
+        "promptTokens": 396,
+        "outputTokens": 232,
+        "ttftMs": 377,
+        "totalMs": 3929,
+        "serverPeakRssMb": 1379,
+        "valid": false,
+        "rejectReasons": [
+          "claim 2: quote not found in S1:L17-L20"
+        ],
+        "status": "answered",
+        "raw": "{\n  \"status\": \"answered\",\n  \"claims\": [\n    {\n      \"text\": \"AuthGuard gets the token from the Authorization header in the request.\",\n      \"source_id\": \"S1\",\n      \"lines\": {\"start\": 12, \"end\": 15},\n      \"quote\": \"const bearerToken = request.headers.authorization;\"\n    },\n    {\n      \"text\": \"The token is verified using the jwtService.verifyAsync method.\",\n      \"source_id\": \"S1\",\n      \"lines\": {\"start\": 17, \"end\": 20},\n      \"quote\": \"const token = bearerToken.split(' ')[1],\\nconst authMember = await this.authService.retrieveAuthMember(token);\"\n    },\n    {\n      \"text\": \"The retrieved member is verified using the memberModel.findById method.\",\n      \"source_id\": \"S2\",\n      \"lines\": {\"start\": 43, \"end\": 46},\n      \"quote\": \"const member: any = await this.memberModel.findById(decoded._id).lean().exec();\"\n    }\n  ]\n}"
+      }
+    },
+    {
+      "id": "T8",
+      "type": "config",
+      "question": "What happens in production when ALLOWED_ORIGINS is not set?",
+      "retrieval": {
+        "excerpts": [
+          {
+            "id": "S1",
+            "path": "backend:apps/gotrip-api/src/main.ts",
+            "lines": "L14-L43 (30 lines)"
+          },
+          {
+            "id": "S2",
+            "path": "backend:README.md",
+            "lines": "L98-L115 (14 lines)"
+          },
+          {
+            "id": "S3",
+            "path": "frontend:libs/config.ts",
+            "lines": "L5-L21 (17 lines)"
+          },
+          {
+            "id": "S4",
+            "path": "backend:apps/gotrip-api/src/libs/env.validation.ts",
+            "lines": "L1-L22 (22 lines)"
+          },
+          {
+            "id": "S5",
+            "path": "backend:apps/gotrip-api/src/components/conversation/conversation.resolver.spec.ts",
+            "lines": "L108-L160 (27 lines)"
+          },
+          {
+            "id": "S6",
+            "path": "frontend:apollo/client.ts",
+            "lines": "L62-L131 (28 lines)"
+          },
+          {
+            "id": "S7",
+            "path": "backend:apps/gotrip-api/src/socket/socket.gateway.ts",
+            "lines": "L53-L103 (22 lines)"
+          }
+        ],
+        "dropped": [
+          {
+            "path": "docs/ai/COMPLETED_TASKS.md",
+            "lines": "L663-L705 (22 lines)",
+            "tokens": 703,
+            "reason": "token budget"
+          }
+        ],
+        "evidenceTokens": 2749,
+        "promptTokens": 2939,
+        "outputTokens": 512,
+        "ttftMs": 4380,
+        "totalMs": 12818,
+        "serverPeakRssMb": 1360,
+        "valid": false,
+        "rejectReasons": [
+          "not valid JSON"
+        ],
+        "status": null,
+        "raw": "{\n  \"status\": \"answered\",\n  \"claims\": [\n    {\n      \"text\": \"In production, restrict CORS to an explicit allowlist (ALLOWED_ORIGINS, comma-separated).\",\n      \"source_id\": \"S3\",\n      \"lines\": {\n        \"start\": 35,\n        \"end\": 43\n      },\n      \"quote\": \"In production, restrict CORS to an explicit allowlist (ALLOWED_ORIGINS, comma-separated).\"\n    },\n    {\n      \"text\": \"In production, treat a missing REACT_APP_API_WS as a real misconfiguration: log it once (loudly, so it's impossible to miss in the console) and return null so callers skip trying to connect at all, instead of quietly retrying a URL that can never work.\",\n      \"source_id\": \"S3\",\n      \"lines\": {\n        \"start\": 11,\n        \"end\": 21\n      },\n      \"quote\": \"In production, treat a missing REACT_APP_API_WS as a real misconfiguration: log it once (loudly, so it's impossible to miss in the console) and return null so callers skip trying to connect at all, instead of quietly retrying a URL that can never work.\"\n    },\n    {\n      \"text\": \"In production, CORS must never silently fall back to allowing every origin in production — require an explicit, non-empty allowlist at boot instead of discovering the gap only after a wide-open API is already live.\",\n      \"source_id\": \"S4\",\n      \"lines\": {\n        \"start\": 15,\n        \"end\": 23\n      },\n      \"quote\": \"In production, CORS must never silently fall back to allowing every origin in production — require an explicit, non-empty allowlist at boot instead of discovering the gap only after a wide-open API is already live.\"\n    },\n    {\n      \"text\": \"In production, the fallback URL for WebSocket connections is 'ws://127.0.0.1:3007'.\",\n      \"source_id\": \"S5\",\n      \"lines\": {\n        \"start\": 78,\n        \"end\": 80\n      },\n      \"quote\": \"In production, the fallback URL for WebSocket connections is 'ws://127.0.0.1:3007'.\"\n    },\n    {\n      \"text\": \"In production, the fallback URL for"
+      },
+      "golden": {
+        "excerpts": [
+          {
+            "id": "S1",
+            "path": "backend:apps/gotrip-api/src/libs/env.validation.ts",
+            "lines": "L18-L22 (5 lines)"
+          },
+          {
+            "id": "S2",
+            "path": "backend:apps/gotrip-api/src/main.ts",
+            "lines": "L39-L43 (5 lines)"
+          }
+        ],
+        "dropped": [],
+        "evidenceTokens": 160,
+        "promptTokens": 349,
+        "outputTokens": 123,
+        "ttftMs": 281,
+        "totalMs": 2170,
+        "serverPeakRssMb": 1348,
+        "valid": true,
+        "rejectReasons": [],
+        "status": "answered",
+        "raw": "{\n  \"status\": \"answered\",\n  \"claims\": [\n    {\n      \"text\": \"In production, if ALLOWED_ORIGINS is not set, an error is thrown.\",\n      \"source_id\": \"S2\",\n      \"lines\": {\n        \"start\": 40,\n        \"end\": 43\n      },\n      \"quote\": \"if (isProduction && !allowedOrigins?.length) { throw new Error('ALLOWED_ORIGINS must be set to a comma-separated list of allowed origins in production.'); }\"\n    }\n  ]\n}"
+      }
+    },
+    {
+      "id": "T11",
+      "type": "config",
+      "question": "Which OpenAI model does the GoTrip AI chat use and how can it be changed?",
+      "retrieval": {
+        "excerpts": [
+          {
+            "id": "S1",
+            "path": "frontend:libs/components/gotripAI/useGoTripAI.ts",
+            "lines": "L90-L119 (30 lines)"
+          },
+          {
+            "id": "S2",
+            "path": "frontend:public/locales/ko/common.json",
+            "lines": "L1065-L1089 (25 lines)"
+          },
+          {
+            "id": "S3",
+            "path": "frontend:libs/components/gotripAI/GoTripAI.tsx",
+            "lines": "L12-L30 (19 lines)"
+          },
+          {
+            "id": "S4",
+            "path": "frontend:libs/components/gotripAI/types.ts",
+            "lines": "L46-L59 (14 lines)"
+          },
+          {
+            "id": "S5",
+            "path": "backend:docs/ai/COMPLETED_TASKS.md",
+            "lines": "L747-L770 (24 lines)"
+          },
+          {
+            "id": "S6",
+            "path": "backend:apps/gotrip-api/src/components/conversation/providers/openai-chat.provider.ts",
+            "lines": "L29-L47 (19 lines)"
+          },
+          {
+            "id": "S7",
+            "path": "frontend:libs/components/gotripAI/GoTripAIProvider.tsx",
+            "lines": "L6-L10 (5 lines)"
+          }
+        ],
+        "dropped": [
+          {
+            "path": "libs/components/gotripAI/useGoTripAI.ts",
+            "lines": "L467-L537 (29 lines)",
+            "tokens": 479,
+            "reason": "token budget"
+          }
+        ],
+        "evidenceTokens": 2957,
+        "promptTokens": 3150,
+        "outputTokens": 289,
+        "ttftMs": 4766,
+        "totalMs": 9693,
+        "serverPeakRssMb": 1348,
+        "valid": false,
+        "rejectReasons": [
+          "claim 1: quote not found in S6:L29-L47",
+          "claim 2: line 11 was not shown in S7"
+        ],
+        "status": "answered",
+        "raw": "{\n  \"status\": \"answered\",\n  \"claims\": [\n    {\n      \"text\": \"The GoTrip AI chat uses the OpenAI model.\",\n      \"source_id\": \"S6\",\n      \"lines\": {\n        \"start\": 29,\n        \"end\": 47\n      },\n      \"quote\": \"Production ChatProvider backed by the official `openai` SDK. Implements the exact same interface every other piece of the conversation architecture already talks to (see chat-provider.interface.ts) — nothing in ConversationService, ConversationContextService, PromptBuilderService, or GoTripAIService's request flow changes to support this; only conversation.module.ts's DI binding does (see CHAT_PROVIDER there).\"\n    },\n    {\n      \"text\": \"The GoTrip AI chat can be changed by modifying the `model` property in the `OpenAIChatProvider`.\",\n      \"source_id\": \"S7\",\n      \"lines\": {\n        \"start\": 6,\n        \"end\": 47\n      },\n      \"quote\": \"Role/message mapping is the only real translation this class does: GoTripAI's MessageRole (SYSTEM/USER/ASSISTANT/TOOL) <-> OpenAI's lowercase role strings, and ToolDefinition/ToolCall <-> OpenAI's function-calling shape — both directions are pure data mapping, no business logic.\"\n    }\n  ]\n}"
+      },
+      "golden": {
+        "excerpts": [
+          {
+            "id": "S1",
+            "path": "backend:apps/gotrip-api/src/components/conversation/providers/openai-chat.provider.ts",
+            "lines": "L12-L62 (10 lines)"
+          }
+        ],
+        "dropped": [],
+        "evidenceTokens": 135,
+        "promptTokens": 328,
+        "outputTokens": 176,
+        "ttftMs": 283,
+        "totalMs": 3128,
+        "serverPeakRssMb": 1351,
+        "valid": false,
+        "rejectReasons": [
+          "claim 1: quote not found in S1:L15-L15",
+          "claim 2: quote not found in S1:L61-L61"
+        ],
+        "status": "answered",
+        "raw": "{\n  \"status\": \"answered\",\n  \"claims\": [\n    {\n      \"text\": \"The GoTrip AI chat uses the OpenAI model 'gpt-5.5'.\",\n      \"source_id\": \"S1\",\n      \"lines\": {\n        \"start\": 15,\n        \"end\": 15\n      },\n      \"quote\": \"const DEFAULT_MODEL = 'gpt-5.5';\"\n    },\n    {\n      \"text\": \"The GoTrip AI chat can be changed by setting the `OPENAI_MODEL` environment variable.\",\n      \"source_id\": \"S1\",\n      \"lines\": {\n        \"start\": 61,\n        \"end\": 61\n      },\n      \"quote\": \"this.model = process.env.OPENAI_MODEL || DEFAULT_MODEL;\"\n    }\n  ]\n}"
+      }
+    },
+    {
+      "id": "T12",
+      "type": "locate",
+      "question": "What runs every night at 01:00?",
+      "retrieval": {
+        "excerpts": [
+          {
+            "id": "S1",
+            "path": "backend:apps/gotrip-batch/src/batch.controller.ts",
+            "lines": "L6-L20 (15 lines)"
+          },
+          {
+            "id": "S2",
+            "path": "frontend:CHANGELOG.md",
+            "lines": "L116-L130 (15 lines)"
+          },
+          {
+            "id": "S3",
+            "path": "frontend:pages/cs/index.tsx",
+            "lines": "L75-L89 (15 lines)"
+          },
+          {
+            "id": "S4",
+            "path": "frontend:CHANGELOG.md",
+            "lines": "L304-L318 (15 lines)"
+          },
+          {
+            "id": "S5",
+            "path": "backend:README.md",
+            "lines": "L69-L97 (9 lines)"
+          }
+        ],
+        "dropped": [
+          {
+            "path": "CHANGELOG.md",
+            "lines": "L232-L246 (15 lines)",
+            "tokens": 1039,
+            "reason": "token budget"
+          },
+          {
+            "path": "CHANGELOG.md",
+            "lines": "L208-L222 (15 lines)",
+            "tokens": 1037,
+            "reason": "token budget"
+          },
+          {
+            "path": "CHANGELOG.md",
+            "lines": "L71-L85 (15 lines)",
+            "tokens": 1023,
+            "reason": "token budget"
+          }
+        ],
+        "evidenceTokens": 2623,
+        "promptTokens": 2810,
+        "outputTokens": 22,
+        "ttftMs": 4212,
+        "totalMs": 4532,
+        "serverPeakRssMb": 1351,
+        "valid": true,
+        "rejectReasons": [],
+        "status": "insufficient_evidence",
+        "raw": "{\n  \"status\": \"insufficient_evidence\",\n  \"claims\": []\n}"
+      },
+      "golden": {
+        "excerpts": [
+          {
+            "id": "S1",
+            "path": "backend:apps/gotrip-batch/src/batch.controller.ts",
+            "lines": "L15-L19 (5 lines)"
+          }
+        ],
+        "dropped": [],
+        "evidenceTokens": 73,
+        "promptTokens": 260,
+        "outputTokens": 15,
+        "ttftMs": 105,
+        "totalMs": 332,
+        "serverPeakRssMb": 1351,
+        "valid": true,
+        "rejectReasons": [],
+        "status": "insufficient_evidence",
+        "raw": "{\"status\": \"insufficient_evidence\", \"claims\": []}"
+      }
+    },
+    {
+      "id": "T14",
+      "type": "abstention",
+      "question": "How does booking and payment checkout work?",
+      "retrieval": {
+        "excerpts": [
+          {
+            "id": "S1",
+            "path": "backend:docs/ai/COMPLETED_TASKS.md",
+            "lines": "L517-L571 (24 lines)"
+          },
+          {
+            "id": "S2",
+            "path": "frontend:docs/ai/UX_ARCHITECTURE.md",
+            "lines": "L517-L555 (28 lines)"
+          },
+          {
+            "id": "S3",
+            "path": "backend:docs/ai/COMPLETED_TASKS.md",
+            "lines": "L77-L104 (28 lines)"
+          },
+          {
+            "id": "S4",
+            "path": "backend:docs/ai/COMPLETED_TASKS.md",
+            "lines": "L649-L671 (23 lines)"
+          },
+          {
+            "id": "S5",
+            "path": "backend:AGENTS.md",
+            "lines": "L2-L48 (28 lines)"
+          },
+          {
+            "id": "S6",
+            "path": "frontend:skills/user-project/SKILL.md",
+            "lines": "L1-L22 (16 lines)"
+          }
+        ],
+        "dropped": [
+          {
+            "path": "docs/ai/DECISIONS.md",
+            "lines": "L9-L46 (21 lines)",
+            "tokens": 771,
+            "reason": "token budget"
+          },
+          {
+            "path": "docs/ai/UI_INVENTORY.md",
+            "lines": "L55-L80 (26 lines)",
+            "tokens": 735,
+            "reason": "token budget"
+          }
+        ],
+        "evidenceTokens": 2890,
+        "promptTokens": 3075,
+        "outputTokens": 501,
+        "ttftMs": 4653,
+        "totalMs": 13079,
+        "serverPeakRssMb": 1355,
+        "valid": false,
+        "rejectReasons": [
+          "claim 1: line 529 was not shown in S1",
+          "claim 2: line 532 was not shown in S2",
+          "claim 5: line 7 was not shown in S5"
+        ],
+        "status": "answered",
+        "raw": "{\n  \"status\": \"answered\",\n  \"claims\": [\n    {\n      \"text\": \"The booking and payment checkout process is managed through the backend, with validation and user interface updates in the frontend.\",\n      \"source_id\": \"S1\",\n      \"lines\": {\n        \"start\": 521,\n        \"end\": 571\n      },\n      \"quote\": \"Validation mirrors: peopleCount ≥1 (stepper floor), own-tour (widget replaced), schedule ACTIVE + seat math (rows disabled / race message).\"\n    },\n    {\n      \"text\": \"The frontend uses the backend's API and batch TypeScript validations to ensure the booking and payment checkout process is functional and secure.\",\n      \"source_id\": \"S2\",\n      \"lines\": {\n        \"start\": 517,\n        \"end\": 571\n      },\n      \"quote\": \"Validation mirrors: peopleCount ≥1 (stepper floor), own-tour (widget replaced), schedule ACTIVE + seat math (rows disabled / race message).\"\n    },\n    {\n      \"text\": \"The frontend uses the backend's API and batch TypeScript validations to ensure the booking and payment checkout process is functional and secure.\",\n      \"source_id\": \"S3\",\n      \"lines\": {\n        \"start\": 77,\n        \"end\": 79\n      },\n      \"quote\": \"Validation results | API and batch TypeScript validations passed\"\n    },\n    {\n      \"text\": \"The frontend uses the backend's API and batch TypeScript validations to ensure the booking and payment checkout process is functional and secure.\",\n      \"source_id\": \"S4\",\n      \"lines\": {\n        \"start\": 649,\n        \"end\": 661\n      },\n      \"quote\": \"Removed the booking, payment, wishlist, destination, and tour-schedule feature areas from both applications. GoTrip is now a tour catalog and community platform.\"\n    },\n    {\n      \"text\": \"The frontend uses the backend's API and batch TypeScript validations to ensure the booking and payment checkout process is functional and secure.\",\n      \"source_id\": \"S5\",\n      \"lines\": {\n        \"start\": 2,\n        \"end\": 17\n      },\n      \"quote\": \"GoTrip is a NestJS GraphQL monorepo migrated from Real estate platform into a Travel Tour Booking Platform\"\n    }\n  ]\n}"
+      },
+      "golden": {
+        "excerpts": [
+          {
+            "id": "S1",
+            "path": "backend:apps/gotrip-api/src/libs/dto/conversation/context.types.ts",
+            "lines": "L24-L28 (5 lines)"
+          },
+          {
+            "id": "S2",
+            "path": "backend:apps/gotrip-api/src/components/conversation/conversation-context.service.ts",
+            "lines": "L217-L221 (5 lines)"
+          },
+          {
+            "id": "S3",
+            "path": "frontend:libs/components/mypage/NotificationsCenter.tsx",
+            "lines": "L115-L119 (5 lines)"
+          },
+          {
+            "id": "S4",
+            "path": "backend:docs/ai/DECISIONS.md",
+            "lines": "L19-L23 (5 lines)"
+          }
+        ],
+        "dropped": [],
+        "evidenceTokens": 396,
+        "promptTokens": 580,
+        "outputTokens": 22,
+        "ttftMs": 657,
+        "totalMs": 942,
+        "serverPeakRssMb": 1354,
+        "valid": true,
+        "rejectReasons": [],
+        "status": "insufficient_evidence",
+        "raw": "{\n  \"status\": \"insufficient_evidence\",\n  \"claims\": []\n}"
+      }
+    },
+    {
+      "id": "T17",
+      "type": "abstention",
+      "question": "How do I issue a Stripe refund?",
+      "retrieval": {
+        "excerpts": [
+          {
+            "id": "S1",
+            "path": "backend:docs/ai/PROMPTS.md",
+            "lines": "L1-L15 (15 lines)"
+          },
+          {
+            "id": "S2",
+            "path": "frontend:AGENTS.md",
+            "lines": "L1-L15 (15 lines)"
+          },
+          {
+            "id": "S3",
+            "path": "backend:docs/ai/COMPLETED_TASKS.md",
+            "lines": "L94-L103 (10 lines)"
+          },
+          {
+            "id": "S4",
+            "path": "frontend:apollo/admin/mutation.ts",
+            "lines": "L200-L207 (8 lines)"
+          },
+          {
+            "id": "S5",
+            "path": "frontend:libs/components/cs/Faq.tsx",
+            "lines": "L126-L130 (5 lines)"
+          },
+          {
+            "id": "S6",
+            "path": "backend:apps/gotrip-api/src/components/conversation/conversation-context.service.ts",
+            "lines": "L70-L84 (15 lines)"
+          },
+          {
+            "id": "S7",
+            "path": "backend:apps/gotrip-api/src/components/testimonial/testimonial.service.ts",
+            "lines": "L125-L135 (11 lines)"
+          },
+          {
+            "id": "S8",
+            "path": "frontend:apollo/user/mutation.ts",
+            "lines": "L443-L449 (7 lines)"
+          }
+        ],
+        "dropped": [],
+        "evidenceTokens": 1277,
+        "promptTokens": 1460,
+        "outputTokens": 22,
+        "ttftMs": 1967,
+        "totalMs": 2253,
+        "serverPeakRssMb": 1351,
+        "valid": true,
+        "rejectReasons": [],
+        "status": "insufficient_evidence",
+        "raw": "{\n  \"status\": \"insufficient_evidence\",\n  \"claims\": []\n}"
+      },
+      "golden": null
+    },
+    {
+      "id": "T18",
+      "type": "doc-vs-code",
+      "question": "Was the destination module removed from the backend?",
+      "retrieval": {
+        "excerpts": [
+          {
+            "id": "S1",
+            "path": "backend:docs/ai/DECISIONS.md",
+            "lines": "L47-L76 (30 lines)"
+          },
+          {
+            "id": "S2",
+            "path": "backend:docs/ai/COMPLETED_TASKS.md",
+            "lines": "L649-L701 (35 lines)"
+          },
+          {
+            "id": "S3",
+            "path": "backend:docs/ai/COMPLETED_TASKS.md",
+            "lines": "L506-L555 (30 lines)"
+          },
+          {
+            "id": "S4",
+            "path": "backend:docs/ai/BACKEND_MIGRATION.md",
+            "lines": "L1-L54 (26 lines)"
+          }
+        ],
+        "dropped": [
+          {
+            "path": "docs/ai/COMPLETED_TASKS.md",
+            "lines": "L3-L66 (52 lines)",
+            "tokens": 1086,
+            "reason": "token budget"
+          },
+          {
+            "path": "docs/ai/COMPLETED_TASKS.md",
+            "lines": "L707-L737 (24 lines)",
+            "tokens": 1125,
+            "reason": "token budget"
+          },
+          {
+            "path": "docs/ai/COMPLETED_TASKS.md",
+            "lines": "L134-L175 (38 lines)",
+            "tokens": 915,
+            "reason": "token budget"
+          },
+          {
+            "path": "apps/gotrip-api/src/components/destination/destination.module.ts",
+            "lines": "L1-L9 (9 lines)",
+            "tokens": 134,
+            "reason": "token budget"
+          }
+        ],
+        "evidenceTokens": 2896,
+        "promptTokens": 3081,
+        "outputTokens": 315,
+        "ttftMs": 4649,
+        "totalMs": 9872,
+        "serverPeakRssMb": 1350,
+        "valid": true,
+        "rejectReasons": [],
+        "status": "answered",
+        "raw": "{\n  \"status\": \"answered\",\n  \"claims\": [\n    {\n      \"text\": \"The destination module was removed from the backend.\",\n      \"source_id\": \"S1\",\n      \"lines\": {\"start\": 49, \"end\": 51},\n      \"quote\": \"GoTrip is now a tour catalog and community platform. The booking, payment, wishlist, destination, and tour-schedule modules were removed from both backend and frontend.\"\n    },\n    {\n      \"text\": \"The destination module was removed from the backend.\",\n      \"source_id\": \"S2\",\n      \"lines\": {\"start\": 649, \"end\": 651},\n      \"quote\": \"Removed the booking, payment, wishlist, destination, and tour-schedule feature areas from both applications. GoTrip is now a tour catalog and community platform.\"\n    },\n    {\n      \"text\": \"The destination module was removed from the backend.\",\n      \"source_id\": \"S3\",\n      \"lines\": {\"start\": 506, \"end\": 508},\n      \"quote\": \"Completed the live destination administration surface at `/_admin/destinations` using the existing destination operations only.\"\n    },\n    {\n      \"text\": \"The destination module was removed from the backend.\",\n      \"source_id\": \"S4\",\n      \"lines\": {\"start\": 1, \"end\": 3},\n      \"quote\": \"# Backend Migration: Property -> Tour\"\n    }\n  ]\n}"
+      },
+      "golden": {
+        "excerpts": [
+          {
+            "id": "S1",
+            "path": "backend:apps/gotrip-api/src/components/destination/destination.resolver.ts",
+            "lines": "L19-L23 (5 lines)"
+          },
+          {
+            "id": "S2",
+            "path": "backend:apps/gotrip-api/src/components/components.module.ts",
+            "lines": "L29-L33 (5 lines)"
+          },
+          {
+            "id": "S3",
+            "path": "backend:docs/ai/DECISIONS.md",
+            "lines": "L64-L68 (5 lines)"
+          }
+        ],
+        "dropped": [],
+        "evidenceTokens": 412,
+        "promptTokens": 596,
+        "outputTokens": 22,
+        "ttftMs": 643,
+        "totalMs": 922,
+        "serverPeakRssMb": 1352,
+        "valid": true,
+        "rejectReasons": [],
+        "status": "insufficient_evidence",
+        "raw": "{\n  \"status\": \"insufficient_evidence\",\n  \"claims\": []\n}"
+      }
+    }
+  ]
+}

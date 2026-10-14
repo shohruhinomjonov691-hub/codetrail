@@ -12,8 +12,8 @@ import { DatabaseSync, type Database } from './sqlite.js';
  *
  * Rules:
  * - Acquire: try `BEGIN EXCLUSIVE` with busy_timeout 0; on SQLITE_BUSY wait with
- *   bounded backoff. The deadline is checked after every failed attempt, so
- *   LOCK_TIMEOUT always fires (async and sync).
+ *   bounded backoff. A monotonic deadline is checked before every retry, so
+ *   LOCK_TIMEOUT always fires and no lock is granted after the deadline.
  * - No stale breaking by age or pid: a live holder — even a paused one — keeps
  *   the lock. If the holder process dies, the OS releases the lock immediately.
  *   (The previous link/guard protocol could hand the lock to two owners.)
@@ -95,20 +95,58 @@ function release(db: Database): void {
 	db.close();
 }
 
-function nextDelay(delay: number): number {
-	return Math.min(delay * 2, MAX_BACKOFF_MS);
+export interface LockClock {
+	/** Monotonic milliseconds. */
+	now(): number;
+	sleep(ms: number): void;
+}
+
+const monotonicNow = (): number => performance.now();
+const sleeper = new Int32Array(new SharedArrayBuffer(4));
+const realSyncClock: LockClock = { now: monotonicNow, sleep: (ms) => void Atomics.wait(sleeper, 0, 0, ms) };
+
+/**
+ * Retry loop shared by both variants. The first attempt always runs; every
+ * later attempt happens only if the monotonic deadline has not passed — so a
+ * waiter that slept past its deadline (blocked event loop, scheduler delay)
+ * fails with LOCK_TIMEOUT instead of entering late.
+ */
+export function acquireLoopSync(tryAcquire: () => boolean, timeoutMs: number, clock: LockClock = realSyncClock, onTimeout: () => Error = defaultTimeout): void {
+	const deadline = clock.now() + timeoutMs;
+	let delay = 5;
+	if (tryAcquire()) return;
+	for (;;) {
+		const left = deadline - clock.now();
+		if (left <= 0) throw onTimeout();
+		clock.sleep(Math.min(delay, left));
+		if (clock.now() >= deadline) throw onTimeout();
+		if (tryAcquire()) return;
+		delay = Math.min(delay * 2, MAX_BACKOFF_MS);
+	}
+}
+
+export async function acquireLoop(tryAcquire: () => boolean, timeoutMs: number, onTimeout: () => Error = defaultTimeout): Promise<void> {
+	const deadline = monotonicNow() + timeoutMs;
+	let delay = 5;
+	if (tryAcquire()) return;
+	for (;;) {
+		const left = deadline - monotonicNow();
+		if (left <= 0) throw onTimeout();
+		await new Promise((r) => setTimeout(r, Math.min(delay, left)));
+		if (monotonicNow() >= deadline) throw onTimeout();
+		if (tryAcquire()) return;
+		delay = Math.min(delay * 2, MAX_BACKOFF_MS);
+	}
+}
+
+function defaultTimeout(): Error {
+	return new CodeTrailError('LOCK_TIMEOUT', 'Timed out waiting for lock');
 }
 
 export async function withLock<T>(locksDir: string, name: string, opts: LockOptions, fn: () => Promise<T> | T): Promise<T> {
 	const { db, ownerFile } = open(locksDir, name);
-	const deadline = Date.now() + opts.timeoutMs;
-	let delay = 5;
 	try {
-		while (!tryAcquire(db)) {
-			if (Date.now() >= deadline) throw timeoutError(name, ownerFile);
-			await new Promise((r) => setTimeout(r, Math.min(delay, Math.max(1, deadline - Date.now()))));
-			delay = nextDelay(delay);
-		}
+		await acquireLoop(() => tryAcquire(db), opts.timeoutMs, () => timeoutError(name, ownerFile));
 	} catch (err) {
 		db.close();
 		throw err;
@@ -121,19 +159,11 @@ export async function withLock<T>(locksDir: string, name: string, opts: LockOpti
 	}
 }
 
-const sleeper = new Int32Array(new SharedArrayBuffer(4));
-
 /** Synchronous variant for short critical sections (registry read–modify–write). */
 export function withLockSync<T>(locksDir: string, name: string, opts: LockOptions, fn: () => T): T {
 	const { db, ownerFile } = open(locksDir, name);
-	const deadline = Date.now() + opts.timeoutMs;
-	let delay = 5;
 	try {
-		while (!tryAcquire(db)) {
-			if (Date.now() >= deadline) throw timeoutError(name, ownerFile);
-			Atomics.wait(sleeper, 0, 0, Math.min(delay, Math.max(1, deadline - Date.now())));
-			delay = nextDelay(delay);
-		}
+		acquireLoopSync(() => tryAcquire(db), opts.timeoutMs, realSyncClock, () => timeoutError(name, ownerFile));
 	} catch (err) {
 		db.close();
 		throw err;

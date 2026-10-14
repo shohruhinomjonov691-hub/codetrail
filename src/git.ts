@@ -25,16 +25,25 @@ export function gitArgs(args: readonly string[], gitDir?: string): string[] {
 }
 
 /**
- * Variables that could redirect git to other repositories, object stores or
- * config are removed from the inherited environment (e.g. an inherited
- * GIT_ALTERNATE_OBJECT_DIRECTORIES would bypass the local-roots checks).
+ * Inherited git environment is an allowlist: every GIT_* variable from the
+ * parent is dropped (they can redirect git to other repositories, object
+ * stores or config) except harmless tracing switches. User and system git
+ * config are isolated: GIT_CONFIG_GLOBAL/GIT_CONFIG_SYSTEM point at /dev/null
+ * and GIT_CONFIG_NOSYSTEM is set, so ~/.gitconfig, $XDG_CONFIG_HOME/git/config
+ * and /etc/gitconfig (e.g. `url.<x>.insteadOf`, credential helpers) are never
+ * read. Only the -c options in GIT_SAFE_CONFIG apply.
  */
-const UNSAFE_GIT_ENV = /^(GIT_DIR|GIT_WORK_TREE|GIT_COMMON_DIR|GIT_INDEX_FILE|GIT_OBJECT_DIRECTORY|GIT_ALTERNATE_OBJECT_DIRECTORIES|GIT_NAMESPACE|GIT_CEILING_DIRECTORIES|GIT_DISCOVERY_ACROSS_FILESYSTEM|GIT_CONFIG|GIT_CONFIG_PARAMETERS|GIT_CONFIG_COUNT|GIT_CONFIG_KEY_\d+|GIT_CONFIG_VALUE_\d+|GIT_EXEC_PATH|GIT_TEMPLATE_DIR|GIT_SSH|GIT_SSH_COMMAND|GIT_PROXY_COMMAND|GIT_EXTERNAL_DIFF|GIT_REPLACE_REF_BASE|GIT_NO_REPLACE_OBJECTS|GIT_SHALLOW_FILE|GIT_GRAFT_FILE)$/;
+const ALLOWED_INHERITED_GIT_VARS = new Set(['GIT_TRACE', 'GIT_TRACE_PACKET', 'GIT_TRACE_PERFORMANCE', 'GIT_TRACE_SETUP', 'GIT_CURL_VERBOSE']);
 
 export function gitEnv(): NodeJS.ProcessEnv {
-	const inherited = Object.fromEntries(Object.entries(process.env).filter(([key]) => !UNSAFE_GIT_ENV.test(key)));
+	const inherited = Object.fromEntries(
+		Object.entries(process.env).filter(([key]) => !key.toUpperCase().startsWith('GIT_') || ALLOWED_INHERITED_GIT_VARS.has(key)),
+	);
 	return {
 		...inherited,
+		GIT_CONFIG_GLOBAL: '/dev/null',
+		GIT_CONFIG_SYSTEM: '/dev/null',
+		GIT_CONFIG_NOSYSTEM: '1',
 		GIT_TERMINAL_PROMPT: '0',
 		GIT_ASKPASS: '',
 		SSH_ASKPASS: '',

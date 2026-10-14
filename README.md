@@ -16,7 +16,7 @@ CodeTrail is a codebase RAG for TypeScript/JavaScript projects. The goal is to a
    - **Content checks:** files over 512 KB, binary content, invalid UTF-8, lines over 2000 chars and minified files are excluded.
    - **Never indexed:** symlinks and submodules.
    - **Path validation:** paths with `..`, absolute paths, backslashes or control characters are rejected.
-   - **Local repositories:** the repository path must stay inside `CODETRAIL_LOCAL_ROOTS`. So must its real git dir, its common dir (worktrees), its object store, every object store reachable through alternates (followed recursively, with cycle and depth protection) and any symlinked object files. Inherited `GIT_*` variables that could redirect git, such as `GIT_ALTERNATE_OBJECT_DIRECTORIES`, are removed. This is checked when the source is registered and again before every snapshot. With no roots configured, local sources are refused.
+   - **Local repositories:** the repository path must stay inside `CODETRAIL_LOCAL_ROOTS`. So must its real git dir, its common dir (worktrees), its object store, every object store reachable through alternates (followed recursively, with cycle and depth protection) and any symlinked object files. Symlinked directories inside the object store are refused. Git runs with an isolated environment: inherited `GIT_*` variables are dropped, except tracing switches. User and system git config are not read: `GIT_CONFIG_GLOBAL` and `GIT_CONFIG_SYSTEM` are set to `/dev/null` and `GIT_CONFIG_NOSYSTEM=1`. This means `~/.gitconfig` rules such as `url.<x>.insteadOf` and credential helpers cannot redirect or authenticate a clone; only CodeTrail's own `-c` options apply. This is checked when the source is registered and again before every snapshot. With no roots configured, local sources are refused.
    - **Reasons recorded:** every excluded file is listed in the manifest with its reason.
 4. **Secret scan before anything is persisted.**
    - **High-confidence detectors** block the whole snapshot. They cover private keys, AWS, GitHub, OpenAI, Anthropic, Google, Slack, Stripe and npm tokens, URLs with embedded credentials, and JWTs. A blocked snapshot writes only a report.
@@ -37,7 +37,7 @@ CodeTrail is a codebase RAG for TypeScript/JavaScript projects. The goal is to a
 7. **Concurrency.**
    - **Snapshots:** snapshot creation holds a per-project cross-process lock. Parallel runs wait (timeout 10 min), then report `exists`.
    - **Registry:** registry updates run as a locked read–modify–write (timeout 10 s).
-   - **Lock mechanism:** each lock is an OS file lock — an open `BEGIN EXCLUSIVE` transaction on `data/locks/<name>.lock.sqlite`. A live holder keeps the lock even while paused; if the holder process dies, the OS releases it at once. Nothing is broken by age or pid. A waiter re-checks its deadline after every attempt and fails with `LOCK_TIMEOUT`. Locks are for a single host on a local filesystem.
+   - **Lock mechanism:** each lock is an OS file lock — an open `BEGIN EXCLUSIVE` transaction on `data/locks/<name>.lock.sqlite`. A live holder keeps the lock even while paused; if the holder process dies, the OS releases it at once. Nothing is broken by age or pid. A waiter checks a monotonic deadline before every retry and fails with `LOCK_TIMEOUT`; it never enters after its deadline. Locks are for a single host on a local filesystem.
 
 ## Usage
 
@@ -148,7 +148,7 @@ npm run cli -- search gotrip <snapshot_id> "where is the tour inquiry sent?" --m
 ## Support boundaries
 
 - **Languages:** only TypeScript/JavaScript code is chunked by AST. Markdown, JSON, YAML and GraphQL are chunked as text. No other languages are supported.
-- **Sources:** only local Git repositories under `CODETRAIL_LOCAL_ROOTS` and `https://github.com/<owner>/<repo>` URLs. No other hosts, SSH, credentials in URLs, ZIP uploads or arbitrary paths. Private GitHub repositories work only if the machine's own git credentials allow cloning; CodeTrail never handles tokens.
+- **Sources:** only local Git repositories under `CODETRAIL_LOCAL_ROOTS` and `https://github.com/<owner>/<repo>` URLs. No other hosts, SSH, credentials in URLs, ZIP uploads or arbitrary paths. Private GitHub repositories are not supported: user and system git config, including credential helpers, are deliberately ignored, and CodeTrail never handles tokens.
 - **Secret scanning:** it is pattern-based and does not guarantee that no secret gets through. The default is to fail closed: a suspected secret blocks the snapshot or excludes the file. An excluded `.env.example` has to be reviewed by hand.
 - **Untrusted content:** repository content (comments, docs) is data, never instructions. Later stages must treat it as untrusted model input (prompt injection).
 - **Out of scope:** automatic edits, pull requests and shell execution.

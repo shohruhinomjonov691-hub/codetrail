@@ -70,7 +70,12 @@ function objectSourcePaths(commonDir: string): { paths: string[]; unsupported: b
 	const paths: string[] = [];
 	let unsupported = false;
 	const visited = new Set<string>();
-	const scanSymlinks = (dir: string, depth: number): void => {
+	/**
+	 * Walks the object store. Symlinked FILES must resolve inside the roots (checked
+	 * by the caller via `paths`); symlinked DIRECTORIES are rejected outright,
+	 * because their entries could point anywhere and git reads through them.
+	 */
+	const scanStore = (dir: string, depth: number): void => {
 		let names: string[];
 		try {
 			names = readdirSync(dir);
@@ -82,9 +87,12 @@ function objectSourcePaths(commonDir: string): { paths: string[]; unsupported: b
 			const st = lstatSync(full);
 			if (st.isSymbolicLink()) {
 				const real = realOrNull(full);
-				if (real) paths.push(real);
-				else unsupported = true;
-			} else if (st.isDirectory() && depth > 0) scanSymlinks(full, depth - 1);
+				if (!real || statSync(real).isDirectory()) unsupported = true;
+				else paths.push(real);
+			} else if (st.isDirectory()) {
+				if (depth > 0) scanStore(full, depth - 1);
+				else unsupported = true; // deeper than any git object layout
+			}
 		}
 	};
 	const visit = (objectsDir: string, depth: number): void => {
@@ -101,7 +109,7 @@ function objectSourcePaths(commonDir: string): { paths: string[]; unsupported: b
 		visited.add(real);
 		paths.push(real);
 		if (existsSync(join(real, 'info', 'http-alternates'))) unsupported = true;
-		scanSymlinks(real, 1);
+		scanStore(real, 3);
 		const alternates = join(real, 'info', 'alternates');
 		if (!existsSync(alternates)) return;
 		for (const line of readFileSync(alternates, 'utf8').split('\n')) {
@@ -141,7 +149,9 @@ export function resolveLocalSource(input: string, localRoots: readonly string[])
 	const commonDir = existsSync(commonFile) ? realOrNull(resolve(gitDir, readFileSync(commonFile, 'utf8').trim())) : gitDir;
 	if (!commonDir) throw new CodeTrailError('UNSAFE_SOURCE', 'Repository common dir cannot be resolved');
 	const objects = objectSourcePaths(commonDir);
-	if (objects.unsupported) throw new CodeTrailError('UNSAFE_SOURCE', 'Repository uses unresolvable or HTTP object alternates');
+	if (objects.unsupported) {
+		throw new CodeTrailError('UNSAFE_SOURCE', 'Repository object store uses symlinked directories, unresolvable links or HTTP alternates');
+	}
 	for (const path of [gitDir, commonDir, ...objects.paths]) {
 		if (!inside(path)) {
 			throw new CodeTrailError('LOCAL_PATH_OUTSIDE_ROOTS', 'Repository git data resolves outside CODETRAIL_LOCAL_ROOTS');

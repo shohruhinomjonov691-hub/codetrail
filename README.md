@@ -192,6 +192,7 @@ v2 results. The reports were regenerated on the schema-2 snapshots (GoTrip `d75a
 
 - **Target missed.** The target was hybrid Evidence Recall@8 ≥ 0.80; v2 gives 0.656 (GoTrip) and 0.700 (ky).
 - **Abstention.** Retrieval scores alone cannot separate unanswerable questions (see the per-report abstention tables). Abstention has to be decided at answer time (stage D), with citation checks.
+- **Role-slots experiment (2026-10-15, not a default):** `--selection role-slots` (search) / `--mode hybrid-role` (eval) keeps the hybrid ranking but takes at most `k - floor(k/4)` implementation chunks (6 of 8) and `floor(k/4)` test/doc/data chunks (2 of 8) in rank order, filling empty slots by rank. Roles come from generic path/language rules (`src/retrieval/role.ts`). One predefined variant, same fixtures/k/indexes/scoring: hybrid Recall@8 GoTrip 0.656 → 0.688, ky 0.700 → 0.800; no question got worse. It stays opt-in because doc/test/config questions could lose evidence and the tuning set barely covers them. Details: `eval/reports/2026-10-15-role-slots/`.
 - **Reports:** `eval/reports/2026-10-14-v2-baseline/` and `eval/reports/2026-10-14-v2-tuned/`. The earlier `eval/reports/2026-10-14-{baseline,tuned}/` use the superseded v1 scoring (line overlap, every expected item required). They are kept for history and must not be compared with v2.
 
 ## Support boundaries

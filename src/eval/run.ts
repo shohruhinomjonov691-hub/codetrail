@@ -3,7 +3,7 @@ import { CodeTrailError } from '../errors.js';
 import type { EmbeddingProvider } from '../embedding/provider.js';
 import { readSnapshot, readSourceTexts, type SourceFileText } from '../snapshot.js';
 import { loadIndex } from '../retrieval/index.js';
-import { DEFAULT_TUNING, openSearchSession, type SearchHit, type SearchMode, type SearchTuning } from '../retrieval/search.js';
+import { DEFAULT_TUNING, openSearchSession, type SearchHit, type SearchMode, type SearchSelection, type SearchTuning } from '../retrieval/search.js';
 import type { EmbeddingRecipe } from '../embedding/recipe.js';
 import { aggregate, distribution, retrievesEvidence, scoreQuestion, type Aggregate, type QuestionScore, type ResolvedEvidence, type RetrievedChunk } from './metrics.js';
 import { anchorLines, normalizeFixture, snapshotLines, validateFixture, type EvalFixture, type Evidence } from './fixture.js';
@@ -12,10 +12,21 @@ import { scanReferences, type ReferenceScanResult } from './reference-scan.js';
 /** Scoring rule identifier, recorded in every result so old and new reports are never mixed. */
 export const SCORING = 'anchor-line/required-groups v2';
 
+/**
+ * Evaluated retrieval variants. `hybrid-role` is hybrid ranking with the
+ * experimental role-slots selection; it is only run when asked for.
+ */
+export type EvalMode = SearchMode | 'hybrid-role';
+export const EVAL_MODES: readonly EvalMode[] = ['bm25', 'vector', 'hybrid', 'hybrid-role'];
+
+function searchVariant(mode: EvalMode): { mode: SearchMode; selection: SearchSelection } {
+	return mode === 'hybrid-role' ? { mode: 'hybrid', selection: 'role-slots' } : { mode, selection: 'rank' };
+}
+
 export interface QuestionResult {
 	id: string;
 	type: string;
-	mode: SearchMode;
+	mode: EvalMode;
 	score: QuestionScore | null; // null for abstention
 	top1: { citation: string; rrf: number; vector_cosine: number | null } | null;
 	hitsReturned: number;
@@ -23,7 +34,7 @@ export interface QuestionResult {
 }
 
 export interface ModeSummary {
-	mode: SearchMode;
+	mode: EvalMode;
 	overall: Aggregate;
 	byType: Record<string, Aggregate>;
 	abstention: {
@@ -59,7 +70,7 @@ export async function runEvaluation(
 	snapshotId: string,
 	fixtureInput: EvalFixture,
 	recipe: EmbeddingRecipe,
-	opts: { modes: SearchMode[]; k: number; tuning?: Partial<SearchTuning>; provider?: EmbeddingProvider },
+	opts: { modes: EvalMode[]; k: number; tuning?: Partial<SearchTuning>; provider?: EmbeddingProvider },
 ): Promise<EvalResult> {
 	const fixture = normalizeFixture(fixtureInput);
 	if (fixture.project !== projectId) throw new CodeTrailError('USAGE', `Fixture is for project ${fixture.project}, not ${projectId}`);
@@ -90,7 +101,7 @@ export async function runEvaluation(
 		for (const mode of opts.modes) {
 			for (const q of fixture.questions) {
 				// Retrieve the deeper candidate list once so the metric sees exactly the top k.
-				const hits: SearchHit[] = await session.search(q.question, { mode, k: opts.k, tuning });
+				const hits: SearchHit[] = await session.search(q.question, { ...searchVariant(mode), k: opts.k, tuning });
 				const retrieved: RetrievedChunk[] = hits.map((h) => ({ source_id: h.source_id, path: h.path, start_line: h.start_line, end_line: h.end_line, text: textById.get(h.chunk_id) ?? '' }));
 				const top = hits[0];
 				const result: QuestionResult = {

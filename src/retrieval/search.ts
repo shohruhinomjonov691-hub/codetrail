@@ -3,9 +3,18 @@ import type { EmbeddingProvider } from '../embedding/provider.js';
 import { formatQuery, PROBE_TEXT } from '../embedding/recipe.js';
 import { assertExactUnitVector } from '../embedding/vectors.js';
 import type { LoadedIndex } from './index.js';
+import { chunkRole, selectRoleSlots, type ChunkRole } from './role.js';
 import { ftsQuery } from './text.js';
 
 export type SearchMode = 'bm25' | 'vector' | 'hybrid';
+
+/**
+ * How the top k is chosen from the ranked candidates:
+ * - rank (default): the first k by score;
+ * - role-slots (experimental, not a default): see selectRoleSlots — k - floor(k/4)
+ *   implementation chunks and floor(k/4) of other roles, short slots filled by rank.
+ */
+export type SearchSelection = 'rank' | 'role-slots';
 
 export const SEARCH_LIMITS = { maxQueryChars: 1000, defaultK: 8, maxK: 20, candidatePool: 100, rrfK: 30, probeMinCosine: 0.9999 } as const;
 
@@ -27,6 +36,7 @@ export interface SearchHit {
 	end_line: number;
 	symbol: string | null;
 	kind: string;
+	role: ChunkRole;
 	citation: string;
 	scores: { rrf: number; bm25_rank: number | null; vector_rank: number | null; vector_cosine: number | null };
 }
@@ -82,6 +92,7 @@ export interface SearchOptions {
 	mode: SearchMode;
 	k?: number;
 	tuning?: Partial<SearchTuning>;
+	selection?: SearchSelection;
 }
 
 function validated(question: string, opts: SearchOptions): { q: string; k: number; t: SearchTuning } {
@@ -97,6 +108,7 @@ function validated(question: string, opts: SearchOptions): { q: string; k: numbe
 	if (t.rrfWeights.length !== 2 || !t.rrfWeights.every((w) => Number.isFinite(w) && w >= 0) || t.rrfWeights[0] + t.rrfWeights[1] <= 0) {
 		throw new CodeTrailError('INVALID_QUERY', 'rrfWeights must be 2 non-negative numbers, not both zero');
 	}
+	if (opts.selection !== undefined && opts.selection !== 'rank' && opts.selection !== 'role-slots') throw new CodeTrailError('INVALID_QUERY', 'selection must be rank or role-slots');
 	return { q, k, t };
 }
 
@@ -180,7 +192,12 @@ async function runSearch(
 	const [wb, wv] = opts.mode === 'hybrid' ? t.rrfWeights : [1, 1];
 	for (const [i, r] of bm25Rank) fused.set(i, (fused.get(i) ?? 0) + wb / (t.rrfK + r));
 	for (const [i, r] of vectorRank) fused.set(i, (fused.get(i) ?? 0) + wv / (t.rrfK + r));
-	const ordered = [...fused.entries()].sort((a, b) => b[1] - a[1] || a[0] - b[0]).slice(0, k);
+	const ranked = [...fused.entries()].sort((a, b) => b[1] - a[1] || a[0] - b[0]);
+	const roleOf = ([i]: [number, number]): ChunkRole => {
+		const c = index.chunks[i];
+		return c ? chunkRole(c.path, c.language) : 'implementation';
+	};
+	const ordered = opts.selection === 'role-slots' ? selectRoleSlots(ranked, k, roleOf) : ranked.slice(0, k);
 
 	return ordered.map(([i, rrf], n) => {
 		const c = index.chunks[i];
@@ -197,6 +214,7 @@ async function runSearch(
 			end_line: c.end_line,
 			symbol: c.symbol,
 			kind: c.kind,
+			role: chunkRole(c.path, c.language),
 			citation: `${c.source_id}@${c.commit.slice(0, 12)}:${c.path}:L${c.start_line}-${c.end_line}`,
 			scores: { rrf: Number(rrf.toFixed(6)), bm25_rank: bm25Rank.get(i) ?? null, vector_rank: vectorRank.get(i) ?? null, vector_cosine: cosine.has(i) ? Number((cosine.get(i) as number).toFixed(6)) : null },
 		};

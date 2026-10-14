@@ -7,9 +7,9 @@ import { createSnapshot, listSnapshots, readSnapshot } from './snapshot.js';
 import { normalizeGithubUrl, resolveLocalSource } from './sources.js';
 import { createEmbeddingProvider, embeddingSettings } from './embedding/config.js';
 import { buildIndex, loadIndex } from './retrieval/index.js';
-import { search, type SearchMode, type SearchTuning } from './retrieval/search.js';
+import { search, type SearchMode, type SearchSelection, type SearchTuning } from './retrieval/search.js';
 import { loadFixture } from './eval/fixture.js';
-import { renderMarkdown, runEvaluation } from './eval/run.js';
+import { EVAL_MODES, renderMarkdown, runEvaluation, type EvalMode } from './eval/run.js';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { join as joinPath } from 'node:path';
 
@@ -25,7 +25,8 @@ Usage:
   codetrail snapshot show <project_id> <snapshot_id>
   codetrail index  <project_id> <snapshot_id>
   codetrail search <project_id> <snapshot_id> <question> [--mode bm25|vector|hybrid] [--k <1-20>]
-  codetrail eval   <project_id> <snapshot_id> <fixture.json> [--mode all|bm25|vector|hybrid] [--k 8]
+                   [--selection rank|role-slots]
+  codetrail eval   <project_id> <snapshot_id> <fixture.json> [--mode all|bm25|vector|hybrid|hybrid-role[,…]] [--k 8]
                    [--bm25-weights p,s,t,i] [--rrf-k n] [--pool n] [--out <dir>]
 
 Environment: CODETRAIL_DATA_DIR (default ./data), CODETRAIL_LOCAL_ROOTS (colon-separated),
@@ -129,11 +130,13 @@ async function main(argv: string[]): Promise<number> {
 		const mode = (one('mode') ?? 'hybrid') as SearchMode;
 		if (!['bm25', 'vector', 'hybrid'].includes(mode)) throw new CodeTrailError('USAGE', '--mode must be bm25, vector or hybrid');
 		const k = one('k') === undefined ? undefined : Number(one('k'));
+		const selection = (one('selection') ?? 'rank') as SearchSelection;
+		if (!['rank', 'role-slots'].includes(selection)) throw new CodeTrailError('USAGE', '--selection must be rank or role-slots');
 		const settings = embeddingSettings();
 		const index = loadIndex(config.dataDir, projectId, snapshotId, settings.recipe);
 		try {
 			const provider = mode === 'bm25' ? undefined : await createEmbeddingProvider(config, settings);
-			const hits = await search(index, question, k === undefined ? { mode } : { mode, k }, provider);
+			const hits = await search(index, question, k === undefined ? { mode, selection } : { mode, k, selection }, provider);
 			print({ project_id: projectId, snapshot_id: snapshotId, mode, index_id: index.meta.index_id, hits });
 		} finally {
 			index.db.close();
@@ -143,8 +146,9 @@ async function main(argv: string[]): Promise<number> {
 	if (group === 'eval') {
 		const [projectId, snapshotId, fixturePath] = need([action, ...rest].filter((v): v is string => v !== undefined), 3) as [string, string, string];
 		const modeArg = one('mode') ?? 'all';
-		const modes: SearchMode[] = modeArg === 'all' ? ['bm25', 'vector', 'hybrid'] : [modeArg as SearchMode];
-		if (!modes.every((m) => ['bm25', 'vector', 'hybrid'].includes(m))) throw new CodeTrailError('USAGE', '--mode must be all, bm25, vector or hybrid');
+		// `all` stays the three shipped modes; the experimental hybrid-role runs only when named.
+		const modes: EvalMode[] = modeArg === 'all' ? ['bm25', 'vector', 'hybrid'] : (modeArg.split(',') as EvalMode[]);
+		if (!modes.every((m) => EVAL_MODES.includes(m))) throw new CodeTrailError('USAGE', '--mode must be all or a comma list of bm25, vector, hybrid, hybrid-role');
 		const tuning: Partial<SearchTuning> = {};
 		const w = one('bm25-weights');
 		if (w) tuning.bm25Weights = w.split(',').map(Number) as unknown as SearchTuning['bm25Weights'];

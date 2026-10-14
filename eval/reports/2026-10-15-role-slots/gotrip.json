@@ -1,0 +1,922 @@
+{
+  "scoring": "anchor-line/required-groups v2",
+  "project": "gotrip",
+  "snapshot_id": "d75aaec921284e35893092a7",
+  "fixture_snapshot_id": "d75aaec921284e35893092a7",
+  "index_id": "e492467de717934070e23f61",
+  "recipe": {
+    "model": "Qwen3-Embedding-0.6B",
+    "quant": "Q8_0",
+    "sha256": "06507c7b42688469c4e7298b0a1e16deff06caf291cf0a5b278c308249c3e439"
+  },
+  "runtime": "b11606-1b70350c9",
+  "k": 8,
+  "tuning": {
+    "bm25Weights": [
+      3,
+      3,
+      1,
+      2
+    ],
+    "rrfK": 30,
+    "candidatePool": 100,
+    "bm25Stopwords": false,
+    "rrfWeights": [
+      1,
+      1
+    ]
+  },
+  "questions": {
+    "total": 18,
+    "answerable": 16,
+    "abstention": 2
+  },
+  "modes": [
+    {
+      "mode": "hybrid",
+      "overall": {
+        "n": 16,
+        "hitAtK": 0.8125,
+        "evidenceRecallAtK": 0.65625,
+        "mrrAtK": 0.47552083333333334
+      },
+      "byType": {
+        "auth": {
+          "n": 3,
+          "hitAtK": 0.6666666666666666,
+          "evidenceRecallAtK": 0.6666666666666666,
+          "mrrAtK": 0.39999999999999997
+        },
+        "config": {
+          "n": 3,
+          "hitAtK": 0.3333333333333333,
+          "evidenceRecallAtK": 0.3333333333333333,
+          "mrrAtK": 0.3333333333333333
+        },
+        "doc-vs-code": {
+          "n": 1,
+          "hitAtK": 1,
+          "evidenceRecallAtK": 0.5,
+          "mrrAtK": 1
+        },
+        "error": {
+          "n": 1,
+          "hitAtK": 1,
+          "evidenceRecallAtK": 1,
+          "mrrAtK": 0.3333333333333333
+        },
+        "flow": {
+          "n": 4,
+          "hitAtK": 1,
+          "evidenceRecallAtK": 0.5,
+          "mrrAtK": 0.14375
+        },
+        "locate": {
+          "n": 2,
+          "hitAtK": 1,
+          "evidenceRecallAtK": 1,
+          "mrrAtK": 1
+        },
+        "partial": {
+          "n": 1,
+          "hitAtK": 1,
+          "evidenceRecallAtK": 1,
+          "mrrAtK": 0.5
+        },
+        "unused": {
+          "n": 1,
+          "hitAtK": 1,
+          "evidenceRecallAtK": 1,
+          "mrrAtK": 1
+        }
+      },
+      "abstention": {
+        "n": 2,
+        "top1VectorCosine": {
+          "n": 2,
+          "min": 0.331027,
+          "median": 0.43498950000000003,
+          "max": 0.538952
+        },
+        "top1Rrf": {
+          "n": 2,
+          "min": 0.055303,
+          "median": 0.0576695,
+          "max": 0.060036
+        },
+        "hitsReturned": [
+          8,
+          8
+        ],
+        "absenceEvidenceFound": [
+          1,
+          0
+        ]
+      },
+      "answerableTop1VectorCosine": {
+        "n": 16,
+        "min": 0.359825,
+        "median": 0.608136,
+        "max": 0.801771
+      }
+    },
+    {
+      "mode": "hybrid-role",
+      "overall": {
+        "n": 16,
+        "hitAtK": 0.875,
+        "evidenceRecallAtK": 0.6875,
+        "mrrAtK": 0.49583333333333335
+      },
+      "byType": {
+        "auth": {
+          "n": 3,
+          "hitAtK": 1,
+          "evidenceRecallAtK": 0.8333333333333334,
+          "mrrAtK": 0.4666666666666666
+        },
+        "config": {
+          "n": 3,
+          "hitAtK": 0.3333333333333333,
+          "evidenceRecallAtK": 0.3333333333333333,
+          "mrrAtK": 0.3333333333333333
+        },
+        "doc-vs-code": {
+          "n": 1,
+          "hitAtK": 1,
+          "evidenceRecallAtK": 0.5,
+          "mrrAtK": 1
+        },
+        "error": {
+          "n": 1,
+          "hitAtK": 1,
+          "evidenceRecallAtK": 1,
+          "mrrAtK": 0.3333333333333333
+        },
+        "flow": {
+          "n": 4,
+          "hitAtK": 1,
+          "evidenceRecallAtK": 0.5,
+          "mrrAtK": 0.175
+        },
+        "locate": {
+          "n": 2,
+          "hitAtK": 1,
+          "evidenceRecallAtK": 1,
+          "mrrAtK": 1
+        },
+        "partial": {
+          "n": 1,
+          "hitAtK": 1,
+          "evidenceRecallAtK": 1,
+          "mrrAtK": 0.5
+        },
+        "unused": {
+          "n": 1,
+          "hitAtK": 1,
+          "evidenceRecallAtK": 1,
+          "mrrAtK": 1
+        }
+      },
+      "abstention": {
+        "n": 2,
+        "top1VectorCosine": {
+          "n": 2,
+          "min": 0.331027,
+          "median": 0.43498950000000003,
+          "max": 0.538952
+        },
+        "top1Rrf": {
+          "n": 2,
+          "min": 0.055303,
+          "median": 0.0576695,
+          "max": 0.060036
+        },
+        "hitsReturned": [
+          8,
+          8
+        ],
+        "absenceEvidenceFound": [
+          1,
+          0
+        ]
+      },
+      "answerableTop1VectorCosine": {
+        "n": 16,
+        "min": 0.359825,
+        "median": 0.608136,
+        "max": 0.801771
+      }
+    }
+  ],
+  "perQuestion": [
+    {
+      "id": "T1",
+      "type": "flow",
+      "mode": "hybrid",
+      "score": {
+        "hit": true,
+        "recall": 0.5,
+        "reciprocalRank": 0.125,
+        "firstRank": 8,
+        "satisfiedGroups": 1,
+        "requiredGroups": 2,
+        "optionalFound": 1
+      },
+      "top1": {
+        "citation": "frontend@0dab32ef2c26:libs/components/cs/Faq.tsx:L50-148",
+        "rrf": 0.048794,
+        "vector_cosine": 0.569917
+      },
+      "hitsReturned": 8
+    },
+    {
+      "id": "T2",
+      "type": "flow",
+      "mode": "hybrid",
+      "score": {
+        "hit": true,
+        "recall": 0.5,
+        "reciprocalRank": 0.2,
+        "firstRank": 5,
+        "satisfiedGroups": 1,
+        "requiredGroups": 2,
+        "optionalFound": 1
+      },
+      "top1": {
+        "citation": "backend@9727a69d7d85:docs/ai/COMPLETED_TASKS.md:L747-770",
+        "rrf": 0.055514,
+        "vector_cosine": 0.746928
+      },
+      "hitsReturned": 8
+    },
+    {
+      "id": "T3",
+      "type": "flow",
+      "mode": "hybrid",
+      "score": {
+        "hit": true,
+        "recall": 0.5,
+        "reciprocalRank": 0.125,
+        "firstRank": 8,
+        "satisfiedGroups": 1,
+        "requiredGroups": 2,
+        "optionalFound": 0
+      },
+      "top1": {
+        "citation": "frontend@0dab32ef2c26:libs/components/gotripAI/useGoTripAI.ts:L433-552",
+        "rrf": 0.062561,
+        "vector_cosine": 0.727671
+      },
+      "hitsReturned": 8
+    },
+    {
+      "id": "T4",
+      "type": "auth",
+      "mode": "hybrid",
+      "score": {
+        "hit": true,
+        "recall": 1,
+        "reciprocalRank": 1,
+        "firstRank": 1,
+        "satisfiedGroups": 2,
+        "requiredGroups": 2,
+        "optionalFound": 0
+      },
+      "top1": {
+        "citation": "backend@9727a69d7d85:apps/gotrip-api/src/components/auth/guards/auth.guard.ts:L6-30",
+        "rrf": 0.064516,
+        "vector_cosine": 0.642047
+      },
+      "hitsReturned": 8
+    },
+    {
+      "id": "T5",
+      "type": "auth",
+      "mode": "hybrid",
+      "score": {
+        "hit": false,
+        "recall": 0,
+        "reciprocalRank": 0,
+        "firstRank": null,
+        "satisfiedGroups": 0,
+        "requiredGroups": 2,
+        "optionalFound": 0
+      },
+      "top1": {
+        "citation": "frontend@0dab32ef2c26:public/locales/ko/common.json:L825-944",
+        "rrf": 0.058277,
+        "vector_cosine": 0.60613
+      },
+      "hitsReturned": 8
+    },
+    {
+      "id": "T6",
+      "type": "auth",
+      "mode": "hybrid",
+      "score": {
+        "hit": true,
+        "recall": 1,
+        "reciprocalRank": 0.2,
+        "firstRank": 5,
+        "satisfiedGroups": 1,
+        "requiredGroups": 1,
+        "optionalFound": 0
+      },
+      "top1": {
+        "citation": "frontend@0dab32ef2c26:apollo/admin/mutation.ts:L57-101",
+        "rrf": 0.052381,
+        "vector_cosine": 0.502674
+      },
+      "hitsReturned": 8
+    },
+    {
+      "id": "T7",
+      "type": "flow",
+      "mode": "hybrid",
+      "score": {
+        "hit": true,
+        "recall": 0.5,
+        "reciprocalRank": 0.125,
+        "firstRank": 8,
+        "satisfiedGroups": 1,
+        "requiredGroups": 2,
+        "optionalFound": 1
+      },
+      "top1": {
+        "citation": "frontend@0dab32ef2c26:libs/components/mypage/BecomeGuide.tsx:L38-152",
+        "rrf": 0.057983,
+        "vector_cosine": 0.610142
+      },
+      "hitsReturned": 8
+    },
+    {
+      "id": "T8",
+      "type": "config",
+      "mode": "hybrid",
+      "score": {
+        "hit": true,
+        "recall": 1,
+        "reciprocalRank": 1,
+        "firstRank": 1,
+        "satisfiedGroups": 1,
+        "requiredGroups": 1,
+        "optionalFound": 1
+      },
+      "top1": {
+        "citation": "backend@9727a69d7d85:apps/gotrip-api/src/main.ts:L11-57",
+        "rrf": 0.064516,
+        "vector_cosine": 0.488763
+      },
+      "hitsReturned": 8
+    },
+    {
+      "id": "T9",
+      "type": "config",
+      "mode": "hybrid",
+      "score": {
+        "hit": false,
+        "recall": 0,
+        "reciprocalRank": 0,
+        "firstRank": null,
+        "satisfiedGroups": 0,
+        "requiredGroups": 1,
+        "optionalFound": 1
+      },
+      "top1": {
+        "citation": "backend@9727a69d7d85:apps/gotrip-api/src/libs/guards/gql-throttler.guard.ts:L5-14",
+        "rrf": 0.052525,
+        "vector_cosine": 0.57655
+      },
+      "hitsReturned": 8
+    },
+    {
+      "id": "T10",
+      "type": "error",
+      "mode": "hybrid",
+      "score": {
+        "hit": true,
+        "recall": 1,
+        "reciprocalRank": 0.3333333333333333,
+        "firstRank": 3,
+        "satisfiedGroups": 2,
+        "requiredGroups": 2,
+        "optionalFound": 0
+      },
+      "top1": {
+        "citation": "frontend@0dab32ef2c26:libs/auth/index.ts:L33-43",
+        "rrf": 0.063508,
+        "vector_cosine": 0.555926
+      },
+      "hitsReturned": 8
+    },
+    {
+      "id": "T11",
+      "type": "config",
+      "mode": "hybrid",
+      "score": {
+        "hit": false,
+        "recall": 0,
+        "reciprocalRank": 0,
+        "firstRank": null,
+        "satisfiedGroups": 0,
+        "requiredGroups": 2,
+        "optionalFound": 0
+      },
+      "top1": {
+        "citation": "frontend@0dab32ef2c26:libs/components/gotripAI/useGoTripAI.ts:L90-208",
+        "rrf": 0.056891,
+        "vector_cosine": 0.692373
+      },
+      "hitsReturned": 8
+    },
+    {
+      "id": "T12",
+      "type": "locate",
+      "mode": "hybrid",
+      "score": {
+        "hit": true,
+        "recall": 1,
+        "reciprocalRank": 1,
+        "firstRank": 1,
+        "satisfiedGroups": 1,
+        "requiredGroups": 1,
+        "optionalFound": 0
+      },
+      "top1": {
+        "citation": "backend@9727a69d7d85:apps/gotrip-batch/src/batch.controller.ts:L6-65",
+        "rrf": 0.048199,
+        "vector_cosine": 0.359825
+      },
+      "hitsReturned": 8
+    },
+    {
+      "id": "T13",
+      "type": "locate",
+      "mode": "hybrid",
+      "score": {
+        "hit": true,
+        "recall": 1,
+        "reciprocalRank": 1,
+        "firstRank": 1,
+        "satisfiedGroups": 1,
+        "requiredGroups": 1,
+        "optionalFound": 0
+      },
+      "top1": {
+        "citation": "backend@9727a69d7d85:apps/gotrip-api/src/components/auth/guards/without.guard.ts:L5-31",
+        "rrf": 0.064516,
+        "vector_cosine": 0.56837
+      },
+      "hitsReturned": 8
+    },
+    {
+      "id": "T14",
+      "type": "abstention",
+      "mode": "hybrid",
+      "score": null,
+      "top1": {
+        "citation": "backend@9727a69d7d85:docs/ai/COMPLETED_TASKS.md:L506-591",
+        "rrf": 0.060036,
+        "vector_cosine": 0.538952
+      },
+      "hitsReturned": 8,
+      "absenceEvidenceFound": 1
+    },
+    {
+      "id": "T15",
+      "type": "partial",
+      "mode": "hybrid",
+      "score": {
+        "hit": true,
+        "recall": 1,
+        "reciprocalRank": 0.5,
+        "firstRank": 2,
+        "satisfiedGroups": 1,
+        "requiredGroups": 1,
+        "optionalFound": 0
+      },
+      "top1": {
+        "citation": "frontend@0dab32ef2c26:libs/components/cs/Faq.tsx:L50-148",
+        "rrf": 0.062561,
+        "vector_cosine": 0.661829
+      },
+      "hitsReturned": 8
+    },
+    {
+      "id": "T16",
+      "type": "unused",
+      "mode": "hybrid",
+      "score": {
+        "hit": true,
+        "recall": 1,
+        "reciprocalRank": 1,
+        "firstRank": 1,
+        "satisfiedGroups": 1,
+        "requiredGroups": 1,
+        "optionalFound": 1
+      },
+      "top1": {
+        "citation": "frontend@0dab32ef2c26:apollo/user/mutation.ts:L414-427",
+        "rrf": 0.064516,
+        "vector_cosine": 0.801771
+      },
+      "hitsReturned": 8
+    },
+    {
+      "id": "T17",
+      "type": "abstention",
+      "mode": "hybrid",
+      "score": null,
+      "top1": {
+        "citation": "backend@9727a69d7d85:docs/ai/PROMPTS.md:L1-106",
+        "rrf": 0.055303,
+        "vector_cosine": 0.331027
+      },
+      "hitsReturned": 8,
+      "absenceEvidenceFound": 0
+    },
+    {
+      "id": "T18",
+      "type": "doc-vs-code",
+      "mode": "hybrid",
+      "score": {
+        "hit": true,
+        "recall": 0.5,
+        "reciprocalRank": 1,
+        "firstRank": 1,
+        "satisfiedGroups": 1,
+        "requiredGroups": 2,
+        "optionalFound": 1
+      },
+      "top1": {
+        "citation": "backend@9727a69d7d85:docs/ai/DECISIONS.md:L47-79",
+        "rrf": 0.064516,
+        "vector_cosine": 0.619458
+      },
+      "hitsReturned": 8
+    },
+    {
+      "id": "T1",
+      "type": "flow",
+      "mode": "hybrid-role",
+      "score": {
+        "hit": true,
+        "recall": 0.5,
+        "reciprocalRank": 0.25,
+        "firstRank": 4,
+        "satisfiedGroups": 1,
+        "requiredGroups": 2,
+        "optionalFound": 1
+      },
+      "top1": {
+        "citation": "frontend@0dab32ef2c26:libs/components/cs/Faq.tsx:L50-148",
+        "rrf": 0.048794,
+        "vector_cosine": 0.569917
+      },
+      "hitsReturned": 8
+    },
+    {
+      "id": "T2",
+      "type": "flow",
+      "mode": "hybrid-role",
+      "score": {
+        "hit": true,
+        "recall": 0.5,
+        "reciprocalRank": 0.2,
+        "firstRank": 5,
+        "satisfiedGroups": 1,
+        "requiredGroups": 2,
+        "optionalFound": 1
+      },
+      "top1": {
+        "citation": "backend@9727a69d7d85:docs/ai/COMPLETED_TASKS.md:L747-770",
+        "rrf": 0.055514,
+        "vector_cosine": 0.746928
+      },
+      "hitsReturned": 8
+    },
+    {
+      "id": "T3",
+      "type": "flow",
+      "mode": "hybrid-role",
+      "score": {
+        "hit": true,
+        "recall": 0.5,
+        "reciprocalRank": 0.125,
+        "firstRank": 8,
+        "satisfiedGroups": 1,
+        "requiredGroups": 2,
+        "optionalFound": 0
+      },
+      "top1": {
+        "citation": "frontend@0dab32ef2c26:libs/components/gotripAI/useGoTripAI.ts:L433-552",
+        "rrf": 0.062561,
+        "vector_cosine": 0.727671
+      },
+      "hitsReturned": 8
+    },
+    {
+      "id": "T4",
+      "type": "auth",
+      "mode": "hybrid-role",
+      "score": {
+        "hit": true,
+        "recall": 1,
+        "reciprocalRank": 1,
+        "firstRank": 1,
+        "satisfiedGroups": 2,
+        "requiredGroups": 2,
+        "optionalFound": 0
+      },
+      "top1": {
+        "citation": "backend@9727a69d7d85:apps/gotrip-api/src/components/auth/guards/auth.guard.ts:L6-30",
+        "rrf": 0.064516,
+        "vector_cosine": 0.642047
+      },
+      "hitsReturned": 8
+    },
+    {
+      "id": "T5",
+      "type": "auth",
+      "mode": "hybrid-role",
+      "score": {
+        "hit": true,
+        "recall": 0.5,
+        "reciprocalRank": 0.2,
+        "firstRank": 5,
+        "satisfiedGroups": 1,
+        "requiredGroups": 2,
+        "optionalFound": 0
+      },
+      "top1": {
+        "citation": "frontend@0dab32ef2c26:public/locales/ko/common.json:L825-944",
+        "rrf": 0.058277,
+        "vector_cosine": 0.60613
+      },
+      "hitsReturned": 8
+    },
+    {
+      "id": "T6",
+      "type": "auth",
+      "mode": "hybrid-role",
+      "score": {
+        "hit": true,
+        "recall": 1,
+        "reciprocalRank": 0.2,
+        "firstRank": 5,
+        "satisfiedGroups": 1,
+        "requiredGroups": 1,
+        "optionalFound": 0
+      },
+      "top1": {
+        "citation": "frontend@0dab32ef2c26:apollo/admin/mutation.ts:L57-101",
+        "rrf": 0.052381,
+        "vector_cosine": 0.502674
+      },
+      "hitsReturned": 8
+    },
+    {
+      "id": "T7",
+      "type": "flow",
+      "mode": "hybrid-role",
+      "score": {
+        "hit": true,
+        "recall": 0.5,
+        "reciprocalRank": 0.125,
+        "firstRank": 8,
+        "satisfiedGroups": 1,
+        "requiredGroups": 2,
+        "optionalFound": 1
+      },
+      "top1": {
+        "citation": "frontend@0dab32ef2c26:libs/components/mypage/BecomeGuide.tsx:L38-152",
+        "rrf": 0.057983,
+        "vector_cosine": 0.610142
+      },
+      "hitsReturned": 8
+    },
+    {
+      "id": "T8",
+      "type": "config",
+      "mode": "hybrid-role",
+      "score": {
+        "hit": true,
+        "recall": 1,
+        "reciprocalRank": 1,
+        "firstRank": 1,
+        "satisfiedGroups": 1,
+        "requiredGroups": 1,
+        "optionalFound": 1
+      },
+      "top1": {
+        "citation": "backend@9727a69d7d85:apps/gotrip-api/src/main.ts:L11-57",
+        "rrf": 0.064516,
+        "vector_cosine": 0.488763
+      },
+      "hitsReturned": 8
+    },
+    {
+      "id": "T9",
+      "type": "config",
+      "mode": "hybrid-role",
+      "score": {
+        "hit": false,
+        "recall": 0,
+        "reciprocalRank": 0,
+        "firstRank": null,
+        "satisfiedGroups": 0,
+        "requiredGroups": 1,
+        "optionalFound": 1
+      },
+      "top1": {
+        "citation": "backend@9727a69d7d85:apps/gotrip-api/src/libs/guards/gql-throttler.guard.ts:L5-14",
+        "rrf": 0.052525,
+        "vector_cosine": 0.57655
+      },
+      "hitsReturned": 8
+    },
+    {
+      "id": "T10",
+      "type": "error",
+      "mode": "hybrid-role",
+      "score": {
+        "hit": true,
+        "recall": 1,
+        "reciprocalRank": 0.3333333333333333,
+        "firstRank": 3,
+        "satisfiedGroups": 2,
+        "requiredGroups": 2,
+        "optionalFound": 0
+      },
+      "top1": {
+        "citation": "frontend@0dab32ef2c26:libs/auth/index.ts:L33-43",
+        "rrf": 0.063508,
+        "vector_cosine": 0.555926
+      },
+      "hitsReturned": 8
+    },
+    {
+      "id": "T11",
+      "type": "config",
+      "mode": "hybrid-role",
+      "score": {
+        "hit": false,
+        "recall": 0,
+        "reciprocalRank": 0,
+        "firstRank": null,
+        "satisfiedGroups": 0,
+        "requiredGroups": 2,
+        "optionalFound": 0
+      },
+      "top1": {
+        "citation": "frontend@0dab32ef2c26:libs/components/gotripAI/useGoTripAI.ts:L90-208",
+        "rrf": 0.056891,
+        "vector_cosine": 0.692373
+      },
+      "hitsReturned": 8
+    },
+    {
+      "id": "T12",
+      "type": "locate",
+      "mode": "hybrid-role",
+      "score": {
+        "hit": true,
+        "recall": 1,
+        "reciprocalRank": 1,
+        "firstRank": 1,
+        "satisfiedGroups": 1,
+        "requiredGroups": 1,
+        "optionalFound": 0
+      },
+      "top1": {
+        "citation": "backend@9727a69d7d85:apps/gotrip-batch/src/batch.controller.ts:L6-65",
+        "rrf": 0.048199,
+        "vector_cosine": 0.359825
+      },
+      "hitsReturned": 8
+    },
+    {
+      "id": "T13",
+      "type": "locate",
+      "mode": "hybrid-role",
+      "score": {
+        "hit": true,
+        "recall": 1,
+        "reciprocalRank": 1,
+        "firstRank": 1,
+        "satisfiedGroups": 1,
+        "requiredGroups": 1,
+        "optionalFound": 0
+      },
+      "top1": {
+        "citation": "backend@9727a69d7d85:apps/gotrip-api/src/components/auth/guards/without.guard.ts:L5-31",
+        "rrf": 0.064516,
+        "vector_cosine": 0.56837
+      },
+      "hitsReturned": 8
+    },
+    {
+      "id": "T14",
+      "type": "abstention",
+      "mode": "hybrid-role",
+      "score": null,
+      "top1": {
+        "citation": "backend@9727a69d7d85:docs/ai/COMPLETED_TASKS.md:L506-591",
+        "rrf": 0.060036,
+        "vector_cosine": 0.538952
+      },
+      "hitsReturned": 8,
+      "absenceEvidenceFound": 1
+    },
+    {
+      "id": "T15",
+      "type": "partial",
+      "mode": "hybrid-role",
+      "score": {
+        "hit": true,
+        "recall": 1,
+        "reciprocalRank": 0.5,
+        "firstRank": 2,
+        "satisfiedGroups": 1,
+        "requiredGroups": 1,
+        "optionalFound": 0
+      },
+      "top1": {
+        "citation": "frontend@0dab32ef2c26:libs/components/cs/Faq.tsx:L50-148",
+        "rrf": 0.062561,
+        "vector_cosine": 0.661829
+      },
+      "hitsReturned": 8
+    },
+    {
+      "id": "T16",
+      "type": "unused",
+      "mode": "hybrid-role",
+      "score": {
+        "hit": true,
+        "recall": 1,
+        "reciprocalRank": 1,
+        "firstRank": 1,
+        "satisfiedGroups": 1,
+        "requiredGroups": 1,
+        "optionalFound": 1
+      },
+      "top1": {
+        "citation": "frontend@0dab32ef2c26:apollo/user/mutation.ts:L414-427",
+        "rrf": 0.064516,
+        "vector_cosine": 0.801771
+      },
+      "hitsReturned": 8
+    },
+    {
+      "id": "T17",
+      "type": "abstention",
+      "mode": "hybrid-role",
+      "score": null,
+      "top1": {
+        "citation": "backend@9727a69d7d85:docs/ai/PROMPTS.md:L1-106",
+        "rrf": 0.055303,
+        "vector_cosine": 0.331027
+      },
+      "hitsReturned": 8,
+      "absenceEvidenceFound": 0
+    },
+    {
+      "id": "T18",
+      "type": "doc-vs-code",
+      "mode": "hybrid-role",
+      "score": {
+        "hit": true,
+        "recall": 0.5,
+        "reciprocalRank": 1,
+        "firstRank": 1,
+        "satisfiedGroups": 1,
+        "requiredGroups": 2,
+        "optionalFound": 1
+      },
+      "top1": {
+        "citation": "backend@9727a69d7d85:docs/ai/DECISIONS.md:L47-79",
+        "rrf": 0.064516,
+        "vector_cosine": 0.619458
+      },
+      "hitsReturned": 8
+    }
+  ],
+  "referenceScans": [
+    {
+      "id": "T16",
+      "kind": "identifier-occurrences",
+      "identifier": "START_CONVERSATION",
+      "source_id": "frontend",
+      "declaration": {
+        "path": "apollo/user/mutation.ts",
+        "line": 414,
+        "column": 14
+      },
+      "expect_occurrences": 0,
+      "occurrences": [],
+      "passed": true
+    }
+  ]
+}

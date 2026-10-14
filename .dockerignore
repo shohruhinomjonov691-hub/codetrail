@@ -16,3 +16,4 @@ models
 .env
 .env.*
 !.env.example
+dist-test

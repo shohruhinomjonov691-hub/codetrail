@@ -14,7 +14,7 @@ import { buildIndex, loadIndex } from '../src/retrieval/index.js';
 import { search } from '../src/retrieval/search.js';
 import { createSnapshot } from '../src/snapshot.js';
 import { DatabaseSync } from '../src/sqlite.js';
-import { startFakeLlama, type FakeLlama } from './fake-llama.js';
+import { FAKE_MODEL_FILE, FAKE_MODEL_SHA256, startFakeLlama, type FakeLlama } from './fake-llama.js';
 import { commitFiles, makeRepo, tempDir } from './helpers.js';
 
 const FILES = {
@@ -24,14 +24,13 @@ const FILES = {
 };
 
 function recipeFor(dir: string, maxTokens = 512): EmbeddingRecipe {
-	const modelFile = join(dir, 'fake-embed.gguf');
-	writeFileSync(modelFile, 'fake');
+	void dir; // the identity check needs the shared fake model file the fake servers report
 	const lock: ModelsLock = {
 		schema: 1,
 		runtime: { name: 'fake', release: 'test', commit: '0'.repeat(40), license: 'MIT', source: 'test', assets: {} },
 		embedding: {
 			name: 'Fake', repo: 'test/fake', revision: 'r', file: 'fake-embed.gguf', url: 'http://127.0.0.1/x',
-			sha256: createHash('sha256').update('fake').digest('hex'), size: 4, quant: 'Q8_0', license: 'MIT', dims: 64, maxTokens,
+			sha256: FAKE_MODEL_SHA256, size: 18, quant: 'Q8_0', license: 'MIT', dims: 64, maxTokens,
 		},
 	};
 	return embeddingRecipeFromLock(lock);
@@ -48,7 +47,7 @@ async function setup(name: string): Promise<{ cfg: RuntimeConfig; repoDir: strin
 	return { cfg, repoDir: repo.dir, snapshotId: snap.report.snapshot_id, recipe: recipeFor(root) };
 }
 
-const provider = (recipe: EmbeddingRecipe, url: string) => new LlamaCppEmbedding({ url, allowedHosts: [], recipe });
+const provider = (recipe: EmbeddingRecipe, url: string) => new LlamaCppEmbedding({ url, allowedHosts: [], recipe, modelFile: FAKE_MODEL_FILE });
 
 let serverA: FakeLlama;
 let serverB: FakeLlama;
@@ -176,7 +175,7 @@ describe('existing artifacts that predate these rules are not accepted silently'
 		const snap2 = await newSnapshot(c.cfg, c.repoDir);
 		const built = await buildIndex(c.cfg, 'app', snap2, provider(c.recipe, otherBuild.url));
 		expect(built.meta.embedded.from_cache).toBe(0);
-		expect(built.meta.server.runtime).toBe('fake-b2');
+		expect(built.meta.identity.runtime).toBe('fake-b2');
 		await otherBuild.close();
 	});
 
@@ -190,6 +189,6 @@ describe('existing artifacts that predate these rules are not accepted silently'
 		v1.close();
 		const built = await buildIndex(c.cfg, 'app', c.snapshotId, provider(c.recipe, serverA.url));
 		expect(built.meta.embedded.from_cache).toBe(0);
-		expect(readdirSync(dir).some((f) => /^v2-[0-9a-f]{64}\.sqlite$/.test(f))).toBe(true);
+		expect(readdirSync(dir).some((f) => /^v3-[0-9a-f]{64}\.sqlite$/.test(f))).toBe(true); // current layout
 	});
 });

@@ -8,17 +8,18 @@ import { assertId, assertSnapshotId } from '../ids.js';
 import { LOCK_DEFAULTS, withLock } from '../lock.js';
 import { readSnapshot, snapshotsRoot, type ChunkRecord } from '../snapshot.js';
 import { DatabaseSync, type Database } from '../sqlite.js';
-import type { EmbeddingProvider } from '../embedding/provider.js';
+import type { EmbeddingProvider, ModelIdentity } from '../embedding/provider.js';
 import { formatDocument, PROBE_TEXT, recipeHash, type EmbeddingRecipe } from '../embedding/recipe.js';
 import { EmbeddingCache } from './cache.js';
 import { firstInvalidRow, isUnitVector } from '../embedding/vectors.js';
 import { splitIdentifiers } from './text.js';
 
 /**
- * 2: cache keyed by recipe + runtime + served-model fingerprint; vectors validated
- * before publish and on load. Schema-1 indexes are rejected with INDEX_OUTDATED.
+ * 3: cache and index bound to the confirmed model identity (loaded model file
+ * sha256 + runtime build + recipe hash); vectors validated before publish and
+ * on load. Older indexes are rejected with INDEX_OUTDATED.
  */
-export const INDEX_SCHEMA = 2;
+export const INDEX_SCHEMA = 3;
 
 export interface IndexMeta {
 	schema: number;
@@ -31,10 +32,10 @@ export interface IndexMeta {
 	recipe_hash: string;
 	dims: number;
 	files: { 'vectors.f32': string; 'probe.f32': string; 'index.sqlite': string };
-	/** Identity of the embedding server the vectors came from. */
-	server: { runtime: string; cache_fingerprint_id: number };
+	/** Confirmed identity of the model that produced every vector in this index. */
+	identity: ModelIdentity;
 	tokens: { max: number; mean: number; total: number };
-	embedded: { from_cache: number; computed: number; invalid_cache_entries: number };
+	embedded: { from_cache: number; computed: number; invalid_cache_entries: number; cache: 'enabled' | 'disabled-probe-differs' };
 	timings_ms: { tokenize: number; embed: number; write: number };
 	created_at: string;
 }
@@ -132,7 +133,8 @@ export async function buildIndex(
 		}
 		const { chunks } = readSnapshot(config.dataDir, projectId, snapshotId);
 		const chunksSha = sha256Hex(readFileSync(chunksFile(config.dataDir, projectId, snapshotId)));
-		const server = await provider.verifyServer();
+		// Throws MODEL_MISMATCH unless the loaded model file, runtime and recipe are confirmed.
+		const identity = await provider.identity();
 
 		const inputs = chunks.map((c) => formatDocument(c));
 		let t0 = Date.now();
@@ -145,10 +147,9 @@ export async function buildIndex(
 		}
 
 		t0 = Date.now();
-		// Fingerprint the served model BEFORE touching the cache: only vectors cached
-		// under the same recipe, runtime build and fingerprint may be reused.
+		// The probe is stored as a drift check for queries; it is not an identity.
 		const [probe] = await provider.embed([PROBE_TEXT], 'document');
-		const cache = new EmbeddingCache(config.dataDir, { recipeHash: recipeHash(recipe), runtime: server.runtime }, recipe.dims, probe as Float32Array);
+		const cache = new EmbeddingCache(config.dataDir, identity, recipe.dims, probe as Float32Array);
 		const vectors = new Float32Array(chunks.length * recipe.dims);
 		const missing: number[] = [];
 		inputs.forEach((input, i) => {
@@ -162,7 +163,7 @@ export async function buildIndex(
 			cache.putMany(computed.map((v, j) => ({ input: inputs[missing[j] as number] as string, vector: v })));
 		}
 		const invalidCache = cache.invalidReads;
-		const fingerprintId = cache.fingerprintId;
+		const cacheReusable = cache.reusable;
 		cache.close();
 		const embedMs = Date.now() - t0;
 		const bad = firstInvalidRow(vectors, recipe.dims);
@@ -195,9 +196,9 @@ export async function buildIndex(
 					'probe.f32': sha256Hex(readFileSync(join(tmp, 'probe.f32'))),
 					'index.sqlite': sha256Hex(readFileSync(join(tmp, 'index.sqlite'))),
 				},
-				server: { runtime: server.runtime, cache_fingerprint_id: fingerprintId },
+				identity,
 				tokens: { max: Math.max(0, ...counts), mean: chunks.length ? Math.round(total / chunks.length) : 0, total },
-				embedded: { from_cache: chunks.length - missing.length, computed: missing.length, invalid_cache_entries: invalidCache },
+				embedded: { from_cache: chunks.length - missing.length, computed: missing.length, invalid_cache_entries: invalidCache, cache: cacheReusable ? 'enabled' : 'disabled-probe-differs' },
 				timings_ms: { tokenize: tokenizeMs, embed: embedMs, write: 0 },
 				created_at: now().toISOString(),
 			};

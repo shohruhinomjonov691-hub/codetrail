@@ -14,8 +14,8 @@ import { buildIndex, loadIndex } from '../src/retrieval/index.js';
 import { search } from '../src/retrieval/search.js';
 import { ftsQuery, splitIdentifiers } from '../src/retrieval/text.js';
 import { createSnapshot } from '../src/snapshot.js';
-import { startFakeLlama, type FakeLlama } from './fake-llama.js';
-import { commitFiles, makeRepo, tempDir } from './helpers.js';
+import { FAKE_MODEL_FILE, FAKE_MODEL_SHA256, startFakeLlama, type FakeLlama } from './fake-llama.js';
+import { commitFiles, makeRepo, tempDir, DIST } from './helpers.js';
 
 const ROOT = join(import.meta.dirname, '..');
 
@@ -36,9 +36,9 @@ interface Ctx {
 }
 
 function fakeModel(dir: string, dims = 64, maxTokens = 512): { recipe: EmbeddingRecipe; lockFile: string; modelFile: string } {
-	const modelFile = join(dir, 'fake-embed.gguf');
-	writeFileSync(modelFile, 'not really a model');
-	const sha256 = createHash('sha256').update(readFileSync(modelFile)).digest('hex');
+	// The identity check needs the server to report the very file we verify: use the shared fake model.
+	const modelFile = FAKE_MODEL_FILE;
+	const sha256 = FAKE_MODEL_SHA256;
 	const lock: ModelsLock = {
 		schema: 1,
 		runtime: { name: 'fake', release: 'test', commit: '0'.repeat(40), license: 'MIT', source: 'test', assets: {} },
@@ -63,12 +63,11 @@ async function setup(name: string, files: Record<string, string> = FILES, projec
 let fake: FakeLlama;
 beforeAll(async () => {
 	fake = await startFakeLlama();
-	execFileSync('npx', ['tsc', '-p', 'tsconfig.build.json'], { cwd: ROOT, stdio: 'ignore' });
 });
 afterAll(async () => fake.close());
 
 const provider = (recipe: EmbeddingRecipe, url = fake.url, extra: Partial<ConstructorParameters<typeof LlamaCppEmbedding>[0]> = {}) =>
-	new LlamaCppEmbedding({ url, allowedHosts: [], recipe, ...extra });
+	new LlamaCppEmbedding({ url, allowedHosts: [], recipe, modelFile: FAKE_MODEL_FILE, ...extra });
 
 describe('provider URL policy', () => {
 	it('accepts loopback and allowlisted internal hosts only', () => {
@@ -246,7 +245,7 @@ describe('parallel index runs in separate processes', () => {
 		};
 		const run = (): Promise<{ code: number | null; out: string; err: string }> =>
 			new Promise((resolve) => {
-				const child = spawn(process.execPath, [join(ROOT, 'dist', 'cli.js'), 'index', 'app', c.snapshotId], { env });
+				const child = spawn(process.execPath, [join(DIST, 'cli.js'), 'index', 'app', c.snapshotId], { env });
 				let out = '';
 				let err = '';
 				child.stdout.on('data', (d: Buffer) => (out += d.toString()));

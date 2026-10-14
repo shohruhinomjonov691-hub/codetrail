@@ -14,10 +14,10 @@ import { Registry } from '../src/registry.js';
 import { scanText } from '../src/secrets.js';
 import { createSnapshot, readSnapshot } from '../src/snapshot.js';
 import { resolveLocalSource } from '../src/sources.js';
-import { CANARY, git, makeRepo, readAllBytes, tempDir } from './helpers.js';
+import { CANARY, git, makeRepo, readAllBytes, tempDir, DIST } from './helpers.js';
 
 const ROOT = join(import.meta.dirname, '..');
-const CLI = join(ROOT, 'dist', 'cli.js');
+const CLI = join(DIST, 'cli.js');
 
 /** Every git repository under `dir`, with all of its objects expanded (decompressed). */
 function expandAllGitObjects(dir: string): Buffer {
@@ -60,7 +60,6 @@ function runCli(env: NodeJS.ProcessEnv, args: string[]): Promise<{ code: number 
 }
 
 beforeAll(() => {
-	execFileSync('npx', ['tsc', '-p', 'tsconfig.build.json'], { cwd: ROOT, stdio: 'ignore' });
 });
 
 describe('#1 raw git data is quarantined and does not outlive a blocked snapshot', () => {

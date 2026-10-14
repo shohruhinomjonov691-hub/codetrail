@@ -36,7 +36,14 @@ export function embeddingSettings(env: NodeJS.ProcessEnv = process.env, cwd = pr
 
 /** Verifies the local weights against the lock, then returns an HTTP provider for the local server. */
 export async function createEmbeddingProvider(config: RuntimeConfig, settings: EmbeddingSettings): Promise<LlamaCppEmbedding> {
-	const provider = new LlamaCppEmbedding({ url: settings.url, allowedHosts: settings.allowedHosts, recipe: settings.recipe });
-	await verifyModelFile(settings.modelFile, settings.expectedSha256, join(config.dataDir, 'cache'));
+	const hashCacheDir = join(config.dataDir, 'cache');
+	await verifyModelFile(settings.modelFile, settings.expectedSha256, hashCacheDir);
+	const provider = new LlamaCppEmbedding({
+		url: settings.url,
+		allowedHosts: settings.allowedHosts,
+		recipe: settings.recipe,
+		modelFile: settings.modelFile,
+		hashCacheDir,
+	});
 	return provider;
 }

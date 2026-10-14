@@ -4,14 +4,13 @@ import { join } from 'node:path';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { gitEnv } from '../src/git.js';
 import { LOCK_DEFAULTS, withLock, withLockSync } from '../src/lock.js';
-import { tempDir } from './helpers.js';
+import { tempDir, DIST } from './helpers.js';
 
 const ROOT = join(import.meta.dirname, '..');
 const fast = { timeoutMs: 300 };
 
 describe('cross-process lock (OS file lock)', () => {
 	beforeAll(() => {
-		execFileSync('npx', ['tsc', '-p', 'tsconfig.build.json'], { cwd: ROOT, stdio: 'ignore' });
 	});
 
 	it('excludes a second acquisition in the same process until release', async () => {
@@ -52,7 +51,7 @@ describe('cross-process lock (OS file lock)', () => {
 		const counter = join(dir, 'counter.txt');
 		writeFileSync(counter, '0');
 		const script = `
-			import { withLock } from ${JSON.stringify(join(ROOT, 'dist', 'lock.js'))};
+			import { withLock } from ${JSON.stringify(join(DIST, 'lock.js'))};
 			import { readFileSync, writeFileSync } from 'node:fs';
 			const [dir, counter] = process.argv.slice(1);
 			for (let i = 0; i < 5; i++) {

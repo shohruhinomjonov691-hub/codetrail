@@ -122,19 +122,20 @@ npm run cli -- search gotrip <snapshot_id> "where is the tour inquiry sent?" --m
   - Each index is written to `data/indexes/<project>/<snapshot>/<index_id>/` (`index.sqlite` with FTS5, `vectors.f32`, `probe.f32`, `meta.json`).
   - It is built in a private temp directory under a cross-process lock and then renamed into place; `meta.json` is written last.
   - Loading re-checks the project, snapshot, recipe, the snapshot's `chunks.jsonl` hash and every file's SHA-256.
-- **Embedding cache.**
-  - Vectors are reused only between runs that agree on the recipe (model SHA-256, quantization, pooling, templates, dims, limits), the runtime build reported by the server (`build_info`) and the served-model fingerprint. The fingerprint is checked before the cache is read.
-  - A server that produces a different embedding space therefore never reads another server's vectors.
-  - Cached vectors are validated on read (dims, finite values, unit norm). A bad entry is recomputed.
-  - Index vectors are validated again before publish and on load. Checksums alone are not trusted.
-  - Cache files: `data/embed-cache/v2-<hash>.sqlite`.
-- **Older artifacts.**
-  - Schema-1 indexes (built before cache fingerprinting) are refused with `INDEX_OUTDATED`. The error names the rebuild command, `codetrail index <project> <snapshot>`, which writes a new index next to the old one.
-  - Old `data/embed-cache/<hash>.sqlite` files (without the `v2-` prefix) are never read. They can be deleted by hand.
 - **Model identity.**
-  - The local GGUF file must match the pinned SHA-256.
-  - The server must report the same model file and enough context.
-  - Its embedding of a fixed probe text must equal the one stored in the index (cosine ≥ 0.9999).
+  - A model's identity is the SHA-256 of the model file the server actually loaded, plus the runtime build the server reports (`build_info`) and the recipe hash.
+  - It is confirmed only if the server reports the same file (by real path) that CodeTrail verified against `models.lock.json`, and reports its build. Otherwise indexing and vector search fail with `MODEL_MISMATCH`.
+  - A probe-embedding cosine is never used as identity.
+- **Embedding cache.**
+  - Vectors are reused only under an identical confirmed identity. The cache file is `data/embed-cache/v3-<hash>.sqlite`.
+  - `llama-server` does not report its pooling or normalization settings. As an extra guard, a run whose probe embedding is not byte-identical to the one stored with the cache neither reads nor writes the cache (`embedded.cache = disabled-probe-differs`). This guard can only reject, never accept.
+  - Cached vectors are validated on read (dims, finite values, non-zero, unit norm) and recomputed when bad.
+  - Index vectors are validated again before publish and on load.
+  - Concurrent first-time opens are safe: `busy_timeout` is set first, and WAL/schema setup retries contention for a bounded time. Permanent errors fail with `CACHE_FAILED`.
+- **Older artifacts.**
+  - Indexes from older schemas (1 and 2, built before identity binding) are refused with `INDEX_OUTDATED`. The error names the rebuild command, `codetrail index <project> <snapshot>`, which writes a new index next to the old one.
+  - Older cache files (no prefix, or `v2-`) are never read. They can be deleted by hand.
+- **Query-time checks.** The provider's confirmed identity must equal the index identity exactly. The probe drift check (cosine ≥ 0.9999) runs after that and can only reject. Query and probe vectors must be finite, non-zero unit vectors with the index dimension before any scoring. Normalization is overflow-safe: `[1e308, 1e308]` becomes `[0.7071, 0.7071]`.
 - **Local-only providers.**
   - The provider URL must be loopback, or an internal host listed in `CODETRAIL_PROVIDER_HOSTS`.
   - Credentials, paths and query strings in the URL are rejected.
@@ -163,7 +164,7 @@ npm run cli -- search gotrip <snapshot_id> "where is the tour inquiry sent?" --m
 
 ```bash
 npm run typecheck
-npm test        # vitest: unit + end-to-end tests on throwaway git fixture repos
+npm test        # vitest: builds once into dist-test/ (global setup), then unit + end-to-end tests on throwaway git fixture repos
 npm run build
 ```
 

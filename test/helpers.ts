@@ -4,6 +4,9 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 
 /** Real path (macOS tmpdir is behind the /var → /private/var symlink, and sources are stored as real paths). */
+/** Compiled output built once by test/global-setup.ts (never the shared dist/). */
+export const DIST = join(import.meta.dirname, '..', 'dist-test');
+
 export function tempDir(prefix: string): string {
 	return realpathSync(mkdtempSync(join(tmpdir(), `codetrail-${prefix}-`)));
 }

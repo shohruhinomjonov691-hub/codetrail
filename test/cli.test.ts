@@ -1,10 +1,10 @@
 import { execFileSync, spawnSync } from 'node:child_process';
 import { join } from 'node:path';
 import { beforeAll, describe, expect, it } from 'vitest';
-import { CANARY, makeRepo, tempDir } from './helpers.js';
+import { CANARY, makeRepo, tempDir, DIST } from './helpers.js';
 
 const ROOT = join(import.meta.dirname, '..');
-const CLI = join(ROOT, 'dist', 'cli.js');
+const CLI = join(DIST, 'cli.js');
 
 function run(env: NodeJS.ProcessEnv, ...args: string[]): { code: number | null; stdout: string; stderr: string } {
 	const res = spawnSync(process.execPath, [CLI, ...args], { env: { ...process.env, ...env }, encoding: 'utf8' });
@@ -13,7 +13,6 @@ function run(env: NodeJS.ProcessEnv, ...args: string[]): { code: number | null; 
 
 describe('cli', () => {
 	beforeAll(() => {
-		execFileSync('npx', ['tsc', '-p', 'tsconfig.build.json'], { cwd: ROOT, stdio: 'ignore' });
 	});
 
 	it('onboards a local repo, blocks on a secret and never prints it', () => {

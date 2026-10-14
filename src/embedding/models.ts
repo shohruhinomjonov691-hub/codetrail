@@ -68,10 +68,10 @@ function hashFile(path: string): Promise<string> {
 export async function verifyModelFile(modelFile: string, expectedSha256: string, cacheDir: string): Promise<void> {
 	if (!existsSync(modelFile)) throw new CodeTrailError('MODEL_MISMATCH', `Model file not found: ${modelFile}`);
 	const st = statSync(modelFile);
-	const cachePath = join(cacheDir, 'model-hashes.json');
+	const cachePath = cacheDir ? join(cacheDir, 'model-hashes.json') : null;
 	let cache: Record<string, { size: number; mtimeMs: number; sha256: string }> = {};
 	try {
-		cache = JSON.parse(readFileSync(cachePath, 'utf8')) as typeof cache;
+		if (cachePath) cache = JSON.parse(readFileSync(cachePath, 'utf8')) as typeof cache;
 	} catch {
 		/* no cache yet */
 	}
@@ -80,8 +80,10 @@ export async function verifyModelFile(modelFile: string, expectedSha256: string,
 	if (!digest) {
 		digest = await hashFile(modelFile);
 		cache[key] = { size: st.size, mtimeMs: st.mtimeMs, sha256: digest };
-		mkdirSync(dirname(cachePath), { recursive: true });
-		writeFileSync(cachePath, JSON.stringify(cache, null, 2) + '\n');
+		if (cachePath) {
+			mkdirSync(dirname(cachePath), { recursive: true });
+			writeFileSync(cachePath, JSON.stringify(cache, null, 2) + '\n');
+		}
 	}
 	if (digest !== expectedSha256) throw new CodeTrailError('MODEL_MISMATCH', 'Model file sha256 does not match models.lock.json');
 }

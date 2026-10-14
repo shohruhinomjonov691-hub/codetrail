@@ -1,6 +1,7 @@
 import { CodeTrailError } from '../errors.js';
 import type { EmbeddingProvider } from '../embedding/provider.js';
 import { formatQuery, PROBE_TEXT } from '../embedding/recipe.js';
+import { isUnitVector } from '../embedding/vectors.js';
 import type { LoadedIndex } from './index.js';
 import { ftsQuery } from './text.js';
 
@@ -31,16 +32,26 @@ function dot(a: Float32Array, offset: number, b: Float32Array): number {
 	return s;
 }
 
+function assertQueryVector(v: unknown, dims: number, what: string): asserts v is Float32Array {
+	if (!(v instanceof Float32Array) || v.length !== dims || !isUnitVector(v, dims)) {
+		throw new CodeTrailError('PROVIDER_FAILED', `${what} is not a finite, non-zero unit vector of ${dims} dims`);
+	}
+}
+
 /**
- * Confirms the provider serves the same model the index was built with: the
- * server's model/context must match the recipe and its embedding of a fixed
- * probe text must equal the stored one (cosine ≥ 0.9999).
+ * Confirms the provider is the model the index was built with. Identity is the
+ * confirmed (loaded model sha256, runtime build, recipe hash) — all must match
+ * the index exactly. The stored probe is then compared as a drift check only.
  */
 export async function verifyProviderAgainstIndex(index: LoadedIndex, provider: EmbeddingProvider): Promise<void> {
-	if (provider.recipe.model.sha256 !== index.meta.recipe.model.sha256) throw new CodeTrailError('MODEL_MISMATCH', 'Provider recipe differs from the index recipe');
-	await provider.verifyServer();
+	const id = await provider.identity();
+	const want = index.meta.identity;
+	if (id.modelSha256 !== want.modelSha256 || id.runtime !== want.runtime || id.recipeHash !== want.recipeHash) {
+		throw new CodeTrailError('MODEL_MISMATCH', 'Embedding model identity differs from the index (model file, runtime or recipe)');
+	}
 	const [probe] = await provider.embed([PROBE_TEXT], 'document');
-	const cos = dot(probe as Float32Array, 0, index.probe);
+	assertQueryVector(probe, index.meta.dims, 'Probe embedding');
+	const cos = dot(probe, 0, index.probe);
 	if (!(cos >= SEARCH_LIMITS.probeMinCosine)) {
 		throw new CodeTrailError('MODEL_MISMATCH', `Embedding server fingerprint differs from the index (cosine ${cos.toFixed(6)})`);
 	}
@@ -81,6 +92,7 @@ export async function search(
 			throw new CodeTrailError('TOKEN_LIMIT', `Query is ${tokens} tokens; the embedding limit is ${provider.recipe.maxTokens} (not truncated)`);
 		}
 		const [qv] = await provider.embed([input], 'query');
+		assertQueryVector(qv, index.meta.dims, 'Query embedding');
 		const dims = index.meta.dims;
 		const scored: { i: number; s: number }[] = [];
 		for (let i = 0; i < index.meta.chunk_count; i++) scored.push({ i, s: dot(index.vectors, i * dims, qv as Float32Array) });

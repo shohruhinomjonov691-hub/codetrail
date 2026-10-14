@@ -13,10 +13,10 @@ import { withLock, withLockSync, type LockOptions } from '../src/lock.js';
 import { Registry } from '../src/registry.js';
 import { createSnapshot } from '../src/snapshot.js';
 import { resolveLocalSource } from '../src/sources.js';
-import { git, makeRepo, tempDir } from './helpers.js';
+import { git, makeRepo, tempDir, DIST } from './helpers.js';
 
 const ROOT = join(import.meta.dirname, '..');
-const LOCK_JS = join(ROOT, 'dist', 'lock.js');
+const LOCK_JS = join(DIST, 'lock.js');
 const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
 
 function deadPid(): number {
@@ -24,7 +24,6 @@ function deadPid(): number {
 }
 
 beforeAll(() => {
-	execFileSync('npx', ['tsc', '-p', 'tsconfig.build.json'], { cwd: ROOT, stdio: 'ignore' });
 });
 
 describe('#1 nested object alternates cannot escape the local roots', () => {

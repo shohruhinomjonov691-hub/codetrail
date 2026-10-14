@@ -25,6 +25,7 @@ export type ErrorCode =
 	| 'INDEX_CORRUPT'
 	| 'UNKNOWN_INDEX'
 	| 'INDEX_OUTDATED'
+	| 'CACHE_FAILED'
 	| 'INVALID_QUERY'
 	| 'USAGE';
 

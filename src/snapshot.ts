@@ -387,18 +387,49 @@ export function listSnapshots(dataDir: string, projectId: string): SnapshotRepor
 		.sort((a, b) => a.created_at.localeCompare(b.created_at));
 }
 
+/**
+ * Reads a snapshot's metadata. A snapshot directory that does not exist is
+ * UNKNOWN_SNAPSHOT; an existing one whose manifest, report or chunks are missing,
+ * unparsable or of the wrong shape (or that names another project/snapshot) is
+ * SNAPSHOT_CORRUPT. Schema-specific checks (SNAPSHOT_OUTDATED) are left to readers.
+ */
 export function readSnapshot(dataDir: string, projectId: string, snapshotId: string): { manifest: Manifest; report: SnapshotReport; chunks: ChunkRecord[] } {
 	assertId('project', projectId);
 	assertSnapshotId(snapshotId);
 	const dir = join(snapshotsRoot(dataDir, projectId), snapshotId);
-	if (!existsSync(join(dir, 'manifest.json'))) throw new CodeTrailError('UNKNOWN_SNAPSHOT', `Unknown snapshot: ${snapshotId}`);
-	const manifest = JSON.parse(readFileSync(join(dir, 'manifest.json'), 'utf8')) as Manifest;
-	const report = JSON.parse(readFileSync(join(dir, 'report.json'), 'utf8')) as SnapshotReport;
-	const chunks = readFileSync(join(dir, 'chunks.jsonl'), 'utf8')
+	if (!existsSync(dir)) throw new CodeTrailError('UNKNOWN_SNAPSHOT', `Unknown snapshot: ${snapshotId}`);
+	const corrupt = (detail: string): CodeTrailError => new CodeTrailError('SNAPSHOT_CORRUPT', `snapshot ${snapshotId}: ${detail}; rebuild it with: codetrail snapshot create ${projectId}`);
+	const read = (name: string): string => {
+		try {
+			return readFileSync(join(dir, name), 'utf8');
+		} catch {
+			throw corrupt(`${name} is missing or unreadable`);
+		}
+	};
+	const parse = (name: string, text: string): unknown => {
+		try {
+			return JSON.parse(text);
+		} catch {
+			throw corrupt(`${name} is not valid JSON`);
+		}
+	};
+	const isObject = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v);
+	const manifest = parse('manifest.json', read('manifest.json'));
+	if (!isObject(manifest) || !Number.isInteger(manifest.schema) || !Array.isArray(manifest.sources) || !Array.isArray(manifest.files) || !manifest.files.every(isObject)) {
+		throw corrupt('manifest.json has an unexpected shape');
+	}
+	if (manifest.project_id !== projectId || manifest.snapshot_id !== snapshotId) throw corrupt('manifest.json belongs to another project or snapshot');
+	const report = parse('report.json', read('report.json'));
+	if (!isObject(report) || report.snapshot_id !== snapshotId) throw corrupt('report.json has an unexpected shape');
+	const chunks = read('chunks.jsonl')
 		.split('\n')
 		.filter(Boolean)
-		.map((line) => JSON.parse(line) as ChunkRecord);
-	return { manifest, report, chunks };
+		.map((line, i) => {
+			const c = parse(`chunks.jsonl line ${i + 1}`, line);
+			if (!isObject(c) || typeof c.text !== 'string' || typeof c.path !== 'string') throw corrupt(`chunks.jsonl line ${i + 1} has an unexpected shape`);
+			return c as unknown as ChunkRecord;
+		});
+	return { manifest: manifest as unknown as Manifest, report: report as unknown as SnapshotReport, chunks };
 }
 
 export interface SourceFileText {
@@ -426,7 +457,6 @@ export function readSourceTexts(dataDir: string, projectId: string, snapshotId: 
 		);
 	}
 	const corrupt = (detail: string): CodeTrailError => new CodeTrailError('SNAPSHOT_CORRUPT', `${where}: ${detail}`);
-	if (manifest.project_id !== projectId || manifest.snapshot_id !== snapshotId) throw corrupt('manifest belongs to another project or snapshot');
 	const source = manifest.sources.find((s) => s.source_id === sourceId);
 	if (!source) throw new CodeTrailError('UNKNOWN_SOURCE', `Unknown source in ${where}: ${sourceId}`);
 	if (!isFullSha(source.commit)) throw corrupt(`source ${sourceId} has no exact commit`);

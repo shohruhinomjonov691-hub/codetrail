@@ -31,6 +31,7 @@ CodeTrail is a codebase RAG for TypeScript/JavaScript projects. The goal is to a
 6. **Deterministic, immutable artifacts.**
    - **Snapshot id:** `snapshot_id = sha256(project_id, source_id@commit…, config hash)`. The config hash covers the snapshot schema, the filters, scanner and chunker versions and the project excludes.
    - **Chunk id:** each chunk id is a hash of project, source, commit, path and line range.
+   - **Reading:** a snapshot directory that does not exist is `UNKNOWN_SNAPSHOT`. An existing one whose `manifest.json`, `report.json` or `chunks.jsonl` is missing, unparsable, of the wrong shape or names another project/snapshot fails with `SNAPSHOT_CORRUPT` and the rebuild command.
    - **No overwrites:** an existing snapshot is never overwritten. A new commit produces a new snapshot next to the old one.
    - **Exact text:** every chunk's `text` is exactly lines `start_line..end_line` of the committed file. A UTF-8 BOM and CRLF line endings are kept as they are.
    - **Coverage:** every non-blank line that is not only closing punctuation lands in some chunk. This includes comments after the last member of a large class.

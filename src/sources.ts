@@ -58,23 +58,19 @@ function locateGitDir(workTree: string): string | null {
 	return existsSync(join(workTree, 'HEAD')) && existsSync(join(workTree, 'objects')) ? workTree : null;
 }
 
-/** Real paths that git would read objects from: object dirs, alternates and symlinked pack/loose entries. */
+/** Upper bound on alternates chain length; git itself stops at 5 levels. */
+const MAX_ALTERNATES_DEPTH = 16;
+
+/**
+ * Real paths git could read objects from: the object store, every object store
+ * reachable through `objects/info/alternates` — followed recursively with cycle
+ * and depth protection — and any symlinked pack/loose entries in each store.
+ */
 function objectSourcePaths(commonDir: string): { paths: string[]; unsupported: boolean } {
-	const objects = join(commonDir, 'objects');
-	const realObjects = realOrNull(objects);
-	const paths: string[] = realObjects ? [realObjects] : [];
-	let unsupported = existsSync(join(objects, 'info', 'http-alternates'));
-	const alternates = join(objects, 'info', 'alternates');
-	if (existsSync(alternates)) {
-		for (const line of readFileSync(alternates, 'utf8').split('\n')) {
-			const entry = line.trim();
-			if (!entry || entry.startsWith('#')) continue;
-			const real = realOrNull(resolve(objects, entry));
-			if (real) paths.push(real);
-			else unsupported = true;
-		}
-	}
-	const scan = (dir: string, depth: number): void => {
+	const paths: string[] = [];
+	let unsupported = false;
+	const visited = new Set<string>();
+	const scanSymlinks = (dir: string, depth: number): void => {
 		let names: string[];
 		try {
 			names = readdirSync(dir);
@@ -88,10 +84,34 @@ function objectSourcePaths(commonDir: string): { paths: string[]; unsupported: b
 				const real = realOrNull(full);
 				if (real) paths.push(real);
 				else unsupported = true;
-			} else if (st.isDirectory() && depth > 0) scan(full, depth - 1);
+			} else if (st.isDirectory() && depth > 0) scanSymlinks(full, depth - 1);
 		}
 	};
-	scan(objects, 1);
+	const visit = (objectsDir: string, depth: number): void => {
+		const real = realOrNull(objectsDir);
+		if (!real) {
+			unsupported = true;
+			return;
+		}
+		if (visited.has(real)) return; // cycle
+		if (depth > MAX_ALTERNATES_DEPTH) {
+			unsupported = true;
+			return;
+		}
+		visited.add(real);
+		paths.push(real);
+		if (existsSync(join(real, 'info', 'http-alternates'))) unsupported = true;
+		scanSymlinks(real, 1);
+		const alternates = join(real, 'info', 'alternates');
+		if (!existsSync(alternates)) return;
+		for (const line of readFileSync(alternates, 'utf8').split('\n')) {
+			const entry = line.trim();
+			if (!entry || entry.startsWith('#')) continue;
+			// Relative entries are relative to this object store (git semantics).
+			visit(resolve(real, entry), depth + 1);
+		}
+	};
+	visit(join(commonDir, 'objects'), 0);
 	return { paths, unsupported };
 }
 

@@ -1,65 +1,50 @@
-import { execFileSync, spawn, spawnSync } from 'node:child_process';
-import { existsSync, readFileSync, utimesSync, writeFileSync } from 'node:fs';
-import { hostname } from 'node:os';
+import { execFileSync, spawn } from 'node:child_process';
+import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { beforeAll, describe, expect, it } from 'vitest';
+import { gitEnv } from '../src/git.js';
 import { LOCK_DEFAULTS, withLock, withLockSync } from '../src/lock.js';
 import { tempDir } from './helpers.js';
 
 const ROOT = join(import.meta.dirname, '..');
-const fast = { timeoutMs: 300, staleMs: 1_000 };
+const fast = { timeoutMs: 300 };
 
-function deadPid(): number {
-	const res = spawnSync(process.execPath, ['-e', 'process.stdout.write(String(process.pid))'], { encoding: 'utf8' });
-	return Number(res.stdout);
-}
-
-function writeLock(dir: string, name: string, owner: { pid: number; host: string; token: string }): string {
-	const path = join(dir, `${name}.lock`);
-	writeFileSync(path, JSON.stringify({ ...owner, created: Date.now() }));
-	return path;
-}
-
-describe('cross-process lock', () => {
+describe('cross-process lock (OS file lock)', () => {
 	beforeAll(() => {
 		execFileSync('npx', ['tsc', '-p', 'tsconfig.build.json'], { cwd: ROOT, stdio: 'ignore' });
 	});
 
-	it('times out while a live owner holds the lock', async () => {
-		const dir = tempDir('lock-timeout');
-		writeLock(dir, 'x', { pid: process.pid, host: hostname(), token: 'someone-else' });
-		const started = Date.now();
-		await expect(withLock(dir, 'x', fast, () => 1)).rejects.toMatchObject({ code: 'LOCK_TIMEOUT' });
-		expect(Date.now() - started).toBeGreaterThanOrEqual(250);
-		expect(() => withLockSync(dir, 'x', fast, () => 1)).toThrow(/Timed out/);
-		// a foreign lock is never removed by a waiter that timed out
-		expect(JSON.parse(readFileSync(join(dir, 'x.lock'), 'utf8')).token).toBe('someone-else');
+	it('excludes a second acquisition in the same process until release', async () => {
+		const dir = tempDir('lock-same');
+		const order: string[] = [];
+		const first = withLock(dir, 'x', fast, async () => {
+			order.push('a-in');
+			await new Promise((r) => setTimeout(r, 100));
+			order.push('a-out');
+		});
+		await new Promise((r) => setTimeout(r, 10));
+		await withLock(dir, 'x', { timeoutMs: 2_000 }, () => order.push('b-in'));
+		await first;
+		expect(order).toEqual(['a-in', 'a-out', 'b-in']);
 	});
 
-	it('recovers a stale lock whose owner process is dead (same host)', async () => {
-		const dir = tempDir('lock-stale');
-		writeLock(dir, 'x', { pid: deadPid(), host: hostname(), token: 'dead' });
-		expect(await withLock(dir, 'x', fast, () => 'got it')).toBe('got it');
-		expect(existsSync(join(dir, 'x.lock'))).toBe(false);
-	});
-
-	it('treats other-host locks as stale only after staleMs', async () => {
-		const dir = tempDir('lock-host');
-		const path = writeLock(dir, 'x', { pid: 1, host: 'some-other-host', token: 'remote' });
-		await expect(withLock(dir, 'x', fast, () => 1)).rejects.toMatchObject({ code: 'LOCK_TIMEOUT' });
-		const old = (Date.now() - 5_000) / 1000;
-		utimesSync(path, old, old);
-		expect(await withLock(dir, 'x', fast, () => 2)).toBe(2);
-	});
-
-	it('releases on error and does not delete a lock it no longer owns', async () => {
+	it('releases on error, and writes a diagnostic owner file', async () => {
 		const dir = tempDir('lock-release');
 		await expect(withLock(dir, 'x', fast, () => Promise.reject(new Error('boom')))).rejects.toThrow('boom');
-		expect(existsSync(join(dir, 'x.lock'))).toBe(false);
-		await withLock(dir, 'x', fast, () => {
-			writeLock(dir, 'x', { pid: process.pid, host: hostname(), token: 'replaced' });
-		});
-		expect(JSON.parse(readFileSync(join(dir, 'x.lock'), 'utf8')).token).toBe('replaced');
+		expect(withLockSync(dir, 'x', fast, () => 'free again')).toBe('free again');
+		expect(JSON.parse(readFileSync(join(dir, 'x.owner.json'), 'utf8')).pid).toBe(process.pid);
+	});
+
+	it('ignores leftover files from the previous lock protocol', async () => {
+		const dir = tempDir('lock-legacy');
+		writeFileSync(join(dir, 'x.lock'), JSON.stringify({ pid: process.pid, host: 'h', token: 't', created: 0 }));
+		writeFileSync(join(dir, 'x.lock.break'), '{}');
+		expect(await withLock(dir, 'x', fast, () => 1)).toBe(1);
+		expect(existsSync(join(dir, 'x.lock'))).toBe(true); // never deleted by the new lock
+	});
+
+	it('rejects invalid lock names', () => {
+		expect(() => withLockSync(tempDir('lock-name'), '../x', fast, () => 1)).toThrow(/invalid lock name/);
 	});
 
 	it('serializes read–modify–write across separate processes', async () => {
@@ -71,7 +56,7 @@ describe('cross-process lock', () => {
 			import { readFileSync, writeFileSync } from 'node:fs';
 			const [dir, counter] = process.argv.slice(1);
 			for (let i = 0; i < 5; i++) {
-				await withLock(dir, 'counter', { timeoutMs: 20000, staleMs: 60000 }, async () => {
+				await withLock(dir, 'counter', { timeoutMs: 20000 }, async () => {
 					const n = Number(readFileSync(counter, 'utf8'));
 					await new Promise((r) => setTimeout(r, 5));
 					writeFileSync(counter, String(n + 1));
@@ -88,7 +73,26 @@ describe('cross-process lock', () => {
 	});
 
 	it('documents the default timeouts', () => {
-		expect(LOCK_DEFAULTS.registry).toEqual({ timeoutMs: 10_000, staleMs: 60_000 });
-		expect(LOCK_DEFAULTS.snapshot.timeoutMs).toBe(600_000);
+		expect(LOCK_DEFAULTS.registry).toEqual({ timeoutMs: 10_000 });
+		expect(LOCK_DEFAULTS.snapshot).toEqual({ timeoutMs: 600_000 });
+	});
+});
+
+describe('git environment', () => {
+	it('drops inherited variables that redirect git to other repositories or config', () => {
+		const keys = ['GIT_ALTERNATE_OBJECT_DIRECTORIES', 'GIT_DIR', 'GIT_OBJECT_DIRECTORY', 'GIT_CONFIG_PARAMETERS', 'GIT_CONFIG_COUNT', 'GIT_CONFIG_KEY_0', 'GIT_SSH_COMMAND'];
+		const saved = Object.fromEntries(keys.map((k) => [k, process.env[k]]));
+		try {
+			for (const k of keys) process.env[k] = '/tmp/evil';
+			const env = gitEnv();
+			for (const k of keys) expect(env[k]).toBeUndefined();
+			expect(env.GIT_TERMINAL_PROMPT).toBe('0');
+			expect(env.PATH).toBe(process.env.PATH);
+		} finally {
+			for (const k of keys) {
+				if (saved[k] === undefined) delete process.env[k];
+				else process.env[k] = saved[k];
+			}
+		}
 	});
 });

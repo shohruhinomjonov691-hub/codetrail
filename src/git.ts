@@ -24,9 +24,17 @@ export function gitArgs(args: readonly string[], gitDir?: string): string[] {
 	return [...GIT_SAFE_CONFIG, ...(gitDir ? ['--git-dir', gitDir] : []), ...args];
 }
 
-function gitEnv(): NodeJS.ProcessEnv {
+/**
+ * Variables that could redirect git to other repositories, object stores or
+ * config are removed from the inherited environment (e.g. an inherited
+ * GIT_ALTERNATE_OBJECT_DIRECTORIES would bypass the local-roots checks).
+ */
+const UNSAFE_GIT_ENV = /^(GIT_DIR|GIT_WORK_TREE|GIT_COMMON_DIR|GIT_INDEX_FILE|GIT_OBJECT_DIRECTORY|GIT_ALTERNATE_OBJECT_DIRECTORIES|GIT_NAMESPACE|GIT_CEILING_DIRECTORIES|GIT_DISCOVERY_ACROSS_FILESYSTEM|GIT_CONFIG|GIT_CONFIG_PARAMETERS|GIT_CONFIG_COUNT|GIT_CONFIG_KEY_\d+|GIT_CONFIG_VALUE_\d+|GIT_EXEC_PATH|GIT_TEMPLATE_DIR|GIT_SSH|GIT_SSH_COMMAND|GIT_PROXY_COMMAND|GIT_EXTERNAL_DIFF|GIT_REPLACE_REF_BASE|GIT_NO_REPLACE_OBJECTS|GIT_SHALLOW_FILE|GIT_GRAFT_FILE)$/;
+
+export function gitEnv(): NodeJS.ProcessEnv {
+	const inherited = Object.fromEntries(Object.entries(process.env).filter(([key]) => !UNSAFE_GIT_ENV.test(key)));
 	return {
-		...process.env,
+		...inherited,
 		GIT_TERMINAL_PROMPT: '0',
 		GIT_ASKPASS: '',
 		SSH_ASKPASS: '',

@@ -16,7 +16,7 @@ CodeTrail is a codebase RAG for TypeScript/JavaScript projects. The goal is to a
    - **Content checks:** files over 512 KB, binary content, invalid UTF-8, lines over 2000 chars and minified files are excluded.
    - **Never indexed:** symlinks and submodules.
    - **Path validation:** paths with `..`, absolute paths, backslashes or control characters are rejected.
-   - **Local repositories:** the repository path must stay inside `CODETRAIL_LOCAL_ROOTS`. So must its real git dir, its common dir (worktrees), its object store, any object alternates and any symlinked object files. This is checked when the source is registered and again before every snapshot. With no roots configured, local sources are refused.
+   - **Local repositories:** the repository path must stay inside `CODETRAIL_LOCAL_ROOTS`. So must its real git dir, its common dir (worktrees), its object store, every object store reachable through alternates (followed recursively, with cycle and depth protection) and any symlinked object files. Inherited `GIT_*` variables that could redirect git, such as `GIT_ALTERNATE_OBJECT_DIRECTORIES`, are removed. This is checked when the source is registered and again before every snapshot. With no roots configured, local sources are refused.
    - **Reasons recorded:** every excluded file is listed in the manifest with its reason.
 4. **Secret scan before anything is persisted.**
    - **High-confidence detectors** block the whole snapshot. They cover private keys, AWS, GitHub, OpenAI, Anthropic, Google, Slack, Stripe and npm tokens, URLs with embedded credentials, and JWTs. A blocked snapshot writes only a report.
@@ -37,7 +37,7 @@ CodeTrail is a codebase RAG for TypeScript/JavaScript projects. The goal is to a
 7. **Concurrency.**
    - **Snapshots:** snapshot creation holds a per-project cross-process lock. Parallel runs wait (timeout 10 min), then report `exists`.
    - **Registry:** registry updates run as a locked read–modify–write (timeout 10 s).
-   - **Stale locks:** a lock is stale when its owner pid is dead on this host, or when another host's lock is older than the stale window. Stale locks are broken under a separate guard, so a fresh lock is never deleted. A waiter that times out fails with `LOCK_TIMEOUT` and never removes the lock.
+   - **Lock mechanism:** each lock is an OS file lock — an open `BEGIN EXCLUSIVE` transaction on `data/locks/<name>.lock.sqlite`. A live holder keeps the lock even while paused; if the holder process dies, the OS releases it at once. Nothing is broken by age or pid. A waiter re-checks its deadline after every attempt and fails with `LOCK_TIMEOUT`. Locks are for a single host on a local filesystem.
 
 ## Usage
 
@@ -148,7 +148,7 @@ npm run cli -- search gotrip <snapshot_id> "where is the tour inquiry sent?" --m
   - Only known transient failures are retried: SIGBUS/SIGSEGV, `pack-objects died`, early EOF, dropped connections. Retries run up to 3 attempts with 200/400 ms backoff, and each clone attempt uses a fresh staging directory.
   - Permanent errors run exactly once, for example permission denied, missing repository or bad ref.
   - Errors carry the exit code or signal. Git's stderr is never printed.
-- **Crash recovery:** a crashed run can leave a staging directory behind. It is removed at the next snapshot of the same project if its owning pid (part of the directory name) is no longer alive.
+- **Crash recovery:** a crashed run can leave a staging directory behind. It is removed at the next snapshot of the same project if its owning pid (part of the directory name) is no longer alive. This cleanup runs right after the project lock is taken and before sources are validated, so an invalid or missing source does not block it.
 
 ## Development
 

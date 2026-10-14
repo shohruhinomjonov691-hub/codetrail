@@ -166,6 +166,9 @@ export async function createSnapshot(
 ): Promise<SnapshotResult> {
 	assertId('project', projectId);
 	return withLock(join(config.dataDir, 'locks'), `snapshot-${projectId}`, LOCK_DEFAULTS.snapshot, async () => {
+		// Crash recovery first: it touches only our own staging dirs of dead pids and
+		// must not depend on the sources still being valid.
+		sweepStaleStaging(config.dataDir, projectId);
 		const project = new Registry(config.dataDir).getProject(projectId);
 		if (project.sources.length === 0) throw new CodeTrailError('USAGE', 'Project has no sources');
 		for (const sourceId of Object.keys(refs)) {
@@ -177,7 +180,6 @@ export async function createSnapshot(
 			if (current !== source.location) throw new CodeTrailError('UNSAFE_SOURCE', `Source ${source.id} no longer resolves to its registered location`);
 			return current;
 		});
-		sweepStaleStaging(config.dataDir, projectId);
 		const staged: StagedSource[] = [];
 		try {
 			const resolved: Resolved[] = [];

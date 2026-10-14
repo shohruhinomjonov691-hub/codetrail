@@ -5,6 +5,9 @@ import { assertId } from './ids.js';
 import { Registry } from './registry.js';
 import { createSnapshot, listSnapshots, readSnapshot } from './snapshot.js';
 import { normalizeGithubUrl, resolveLocalSource } from './sources.js';
+import { createEmbeddingProvider, embeddingSettings } from './embedding/config.js';
+import { buildIndex, loadIndex } from './retrieval/index.js';
+import { search, type SearchMode } from './retrieval/search.js';
 
 const USAGE = `codetrail — exact-commit snapshots and chunking for TS/JS repositories
 
@@ -16,8 +19,11 @@ Usage:
   codetrail snapshot create <project_id> [--ref <source_id>=<ref>]...
   codetrail snapshot list <project_id>
   codetrail snapshot show <project_id> <snapshot_id>
+  codetrail index  <project_id> <snapshot_id>
+  codetrail search <project_id> <snapshot_id> <question> [--mode bm25|vector|hybrid] [--k <1-20>]
 
-Environment: CODETRAIL_DATA_DIR (default ./data), CODETRAIL_LOCAL_ROOTS (colon-separated).
+Environment: CODETRAIL_DATA_DIR (default ./data), CODETRAIL_LOCAL_ROOTS (colon-separated),
+CODETRAIL_EMBED_URL, CODETRAIL_MODELS_DIR, CODETRAIL_PROVIDER_HOSTS (local models only; see .env.example).
 Output is JSON. File contents and secret values are never printed.`;
 
 interface Parsed {
@@ -102,6 +108,30 @@ async function main(argv: string[]): Promise<number> {
 		const [projectId, snapshotId] = need(rest, 2) as [string, string];
 		const { report } = readSnapshot(config.dataDir, projectId, snapshotId);
 		print(report);
+		return 0;
+	}
+	if (group === 'index') {
+		const [projectId, snapshotId] = need([action, ...rest].filter((v): v is string => v !== undefined), 2) as [string, string];
+		const settings = embeddingSettings();
+		const provider = await createEmbeddingProvider(config, settings);
+		const result = await buildIndex(config, projectId, snapshotId, provider);
+		print({ result: result.status, ...result.meta });
+		return 0;
+	}
+	if (group === 'search') {
+		const [projectId, snapshotId, question] = need([action, ...rest].filter((v): v is string => v !== undefined), 3) as [string, string, string];
+		const mode = (one('mode') ?? 'hybrid') as SearchMode;
+		if (!['bm25', 'vector', 'hybrid'].includes(mode)) throw new CodeTrailError('USAGE', '--mode must be bm25, vector or hybrid');
+		const k = one('k') === undefined ? undefined : Number(one('k'));
+		const settings = embeddingSettings();
+		const index = loadIndex(config.dataDir, projectId, snapshotId, settings.recipe);
+		try {
+			const provider = mode === 'bm25' ? undefined : await createEmbeddingProvider(config, settings);
+			const hits = await search(index, question, k === undefined ? { mode } : { mode, k }, provider);
+			print({ project_id: projectId, snapshot_id: snapshotId, mode, index_id: index.meta.index_id, hits });
+		} finally {
+			index.db.close();
+		}
 		return 0;
 	}
 	process.stderr.write(USAGE + '\n');

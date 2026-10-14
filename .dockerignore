@@ -1,0 +1,18 @@
+# Keep weights, local data and secrets out of any image build context.
+.git
+node_modules
+dist
+coverage
+data
+models
+*.gguf
+*.safetensors
+*.onnx
+*.bin
+*.pt
+*.pth
+*.ckpt
+*.tar.gz
+.env
+.env.*
+!.env.example

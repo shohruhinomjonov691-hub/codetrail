@@ -2,7 +2,9 @@
 
 CodeTrail is a codebase RAG for TypeScript/JavaScript projects. The goal is to answer questions about a repository with evidence: `source@commit:path:Lx-Ly` citations that can be checked.
 
-**Status: stage B.** Onboarding, exact-commit snapshots, safety filters and AST chunking are implemented. Not built yet: retrieval, embeddings, answer generation, the web UI and deployment. This stage makes no network calls to any LLM or embedding provider.
+**Status: stages B and C1–C2.** Onboarding, exact-commit snapshots, safety filters, AST chunking, a local embedding provider, a per-snapshot index and hybrid (BM25 + vector + RRF) search are implemented. Not built yet: retrieval evaluation, answer generation, the web UI and deployment.
+
+**Local models only.** Embeddings come from a local `llama-server` (llama.cpp) running Qwen3-Embedding-0.6B. No external AI API is used, and code is never sent to a hosted model.
 
 ## What stage B does
 
@@ -89,6 +91,50 @@ data/
 ```
 
 `data/`, `*.jsonl` and `.env` are git-ignored.
+
+## Retrieval (stage C1–C2)
+
+**Pinned models.** `models.lock.json` pins the runtime and the embedding model, including URL, version, license and SHA-256. The weights themselves are never committed and never copied into an image.
+
+| Component | Pin |
+| --- | --- |
+| Runtime | llama.cpp `llama-server` release `b11606` (commit `1b70350c9`, MIT) |
+| Embedding model | Qwen3-Embedding-0.6B `Q8_0` (Apache-2.0, 1024 dims), Hugging Face revision `370f27d7` |
+
+Compatibility was checked on macOS arm64: the official model-card similarity example is reproduced within 0.001.
+
+```bash
+CODETRAIL_MODELS_DIR=~/Developer/codetrail-models node scripts/fetch-models.mjs   # downloads + verifies sha256
+CODETRAIL_MODELS_DIR=~/Developer/codetrail-models scripts/embed-server.sh          # loopback only, prompt cache off
+npm run cli -- index  gotrip <snapshot_id>
+npm run cli -- search gotrip <snapshot_id> "where is the tour inquiry sent?" --mode hybrid --k 8
+```
+
+- **Embedding recipe.**
+  - Last-token pooling with L2-normalized vectors.
+  - Queries use the official format `Instruct: <task>\nQuery:<question>`. Documents get no instruction; their input is `File / Symbol / text`.
+  - The recipe hash keys both the embedding cache and the index, so vectors from different models or settings never mix.
+- **No silent truncation.**
+  - Every input is token-counted first, using the server tokenizer with special tokens.
+  - If anything exceeds `maxTokens` (4096), indexing aborts and lists the offending chunks.
+  - `llama-server` itself also rejects over-long input with HTTP 400.
+- **Atomic, verified indexes.**
+  - Each index is written to `data/indexes/<project>/<snapshot>/<index_id>/` (`index.sqlite` with FTS5, `vectors.f32`, `probe.f32`, `meta.json`).
+  - It is built in a private temp directory under a cross-process lock and then renamed into place; `meta.json` is written last.
+  - Loading re-checks the project, snapshot, recipe, the snapshot's `chunks.jsonl` hash and every file's SHA-256.
+- **Model identity.**
+  - The local GGUF file must match the pinned SHA-256.
+  - The server must report the same model file and enough context.
+  - Its embedding of a fixed probe text must equal the one stored in the index (cosine ≥ 0.9999).
+- **Local-only providers.**
+  - The provider URL must be loopback, or an internal host listed in `CODETRAIL_PROVIDER_HOSTS`.
+  - Credentials, paths and query strings in the URL are rejected.
+  - Redirects are never followed.
+- **Limits.**
+  - Query embedding: 10 s timeout. Document batch: 120 s timeout.
+  - At most 2 concurrent requests; batches of 8 texts.
+  - Question: at most 1000 characters. `k`: 1–20.
+- **Server flags.** Use `--cache-ram 0` on the embedding server. With the default prompt cache, the server's memory footprint on the development Mac grew to 10–11 GB; with the cache off it was about 1 GB, and the vectors were identical.
 
 ## Support boundaries
 

@@ -18,6 +18,13 @@ export type ErrorCode =
 	| 'UNKNOWN_SNAPSHOT'
 	| 'LOCK_TIMEOUT'
 	| 'UNSAFE_SOURCE'
+	| 'PROVIDER_URL_REJECTED'
+	| 'PROVIDER_FAILED'
+	| 'MODEL_MISMATCH'
+	| 'TOKEN_LIMIT'
+	| 'INDEX_CORRUPT'
+	| 'UNKNOWN_INDEX'
+	| 'INVALID_QUERY'
 	| 'USAGE';
 
 export class CodeTrailError extends Error {

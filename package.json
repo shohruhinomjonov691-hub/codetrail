@@ -9,7 +9,7 @@
     "codetrail": "dist/cli.js"
   },
   "engines": {
-    "node": ">=22.12"
+    "node": ">=22.13"
   },
   "scripts": {
     "build": "tsc -p tsconfig.build.json",

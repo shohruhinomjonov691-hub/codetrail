@@ -74,7 +74,13 @@ export async function search(
 	if (opts.mode !== 'bm25') {
 		if (!provider) throw new CodeTrailError('USAGE', `${opts.mode} search needs an embedding provider`);
 		await verifyProviderAgainstIndex(index, provider);
-		const [qv] = await provider.embed([formatQuery(provider.recipe, q)], 'query');
+		// The character limit does not bound tokens: count the exact model input first.
+		const input = formatQuery(provider.recipe, q);
+		const tokens = await provider.countTokens(input);
+		if (tokens > provider.recipe.maxTokens) {
+			throw new CodeTrailError('TOKEN_LIMIT', `Query is ${tokens} tokens; the embedding limit is ${provider.recipe.maxTokens} (not truncated)`);
+		}
+		const [qv] = await provider.embed([input], 'query');
 		const dims = index.meta.dims;
 		const scored: { i: number; s: number }[] = [];
 		for (let i = 0; i < index.meta.chunk_count; i++) scored.push({ i, s: dot(index.vectors, i * dims, qv as Float32Array) });

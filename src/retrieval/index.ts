@@ -1,5 +1,5 @@
 import { randomBytes } from 'node:crypto';
-import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { RuntimeConfig } from '../config.js';
 import { CodeTrailError } from '../errors.js';
@@ -11,9 +11,14 @@ import { DatabaseSync, type Database } from '../sqlite.js';
 import type { EmbeddingProvider } from '../embedding/provider.js';
 import { formatDocument, PROBE_TEXT, recipeHash, type EmbeddingRecipe } from '../embedding/recipe.js';
 import { EmbeddingCache } from './cache.js';
+import { firstInvalidRow, isUnitVector } from '../embedding/vectors.js';
 import { splitIdentifiers } from './text.js';
 
-export const INDEX_SCHEMA = 1;
+/**
+ * 2: cache keyed by recipe + runtime + served-model fingerprint; vectors validated
+ * before publish and on load. Schema-1 indexes are rejected with INDEX_OUTDATED.
+ */
+export const INDEX_SCHEMA = 2;
 
 export interface IndexMeta {
 	schema: number;
@@ -26,8 +31,10 @@ export interface IndexMeta {
 	recipe_hash: string;
 	dims: number;
 	files: { 'vectors.f32': string; 'probe.f32': string; 'index.sqlite': string };
+	/** Identity of the embedding server the vectors came from. */
+	server: { runtime: string; cache_fingerprint_id: number };
 	tokens: { max: number; mean: number; total: number };
-	embedded: { from_cache: number; computed: number };
+	embedded: { from_cache: number; computed: number; invalid_cache_entries: number };
 	timings_ms: { tokenize: number; embed: number; write: number };
 	created_at: string;
 }
@@ -43,6 +50,22 @@ export interface LoadedIndex {
 
 export function indexId(projectId: string, snapshotId: string, recipe: EmbeddingRecipe): string {
 	return hashParts([INDEX_SCHEMA, projectId, snapshotId, recipeHash(recipe)]).slice(0, 24);
+}
+
+/** A ready index for this snapshot written with an older schema, if any. */
+function findOutdatedIndex(dataDir: string, projectId: string, snapshotId: string): { id: string; schema: number } | null {
+	const parent = join(dataDir, 'indexes', projectId, snapshotId);
+	if (!existsSync(parent)) return null;
+	for (const name of readdirSync(parent)) {
+		if (!/^[0-9a-f]{24}$/.test(name)) continue;
+		try {
+			const meta = JSON.parse(readFileSync(join(parent, name, 'meta.json'), 'utf8')) as { schema?: number };
+			if (typeof meta.schema === 'number' && meta.schema < INDEX_SCHEMA) return { id: name, schema: meta.schema };
+		} catch {
+			/* not a ready index */
+		}
+	}
+	return null;
 }
 
 export function indexDir(dataDir: string, projectId: string, snapshotId: string, id: string): string {
@@ -109,7 +132,7 @@ export async function buildIndex(
 		}
 		const { chunks } = readSnapshot(config.dataDir, projectId, snapshotId);
 		const chunksSha = sha256Hex(readFileSync(chunksFile(config.dataDir, projectId, snapshotId)));
-		await provider.verifyServer();
+		const server = await provider.verifyServer();
 
 		const inputs = chunks.map((c) => formatDocument(c));
 		let t0 = Date.now();
@@ -122,7 +145,10 @@ export async function buildIndex(
 		}
 
 		t0 = Date.now();
-		const cache = new EmbeddingCache(config.dataDir, recipeHash(recipe), recipe.dims);
+		// Fingerprint the served model BEFORE touching the cache: only vectors cached
+		// under the same recipe, runtime build and fingerprint may be reused.
+		const [probe] = await provider.embed([PROBE_TEXT], 'document');
+		const cache = new EmbeddingCache(config.dataDir, { recipeHash: recipeHash(recipe), runtime: server.runtime }, recipe.dims, probe as Float32Array);
 		const vectors = new Float32Array(chunks.length * recipe.dims);
 		const missing: number[] = [];
 		inputs.forEach((input, i) => {
@@ -135,9 +161,14 @@ export async function buildIndex(
 			computed.forEach((v, j) => vectors.set(v, (missing[j] as number) * recipe.dims));
 			cache.putMany(computed.map((v, j) => ({ input: inputs[missing[j] as number] as string, vector: v })));
 		}
+		const invalidCache = cache.invalidReads;
+		const fingerprintId = cache.fingerprintId;
 		cache.close();
-		const [probe] = await provider.embed([PROBE_TEXT], 'document');
 		const embedMs = Date.now() - t0;
+		const bad = firstInvalidRow(vectors, recipe.dims);
+		if (bad >= 0 || !isUnitVector(probe as Float32Array, recipe.dims)) {
+			throw new CodeTrailError('INDEX_CORRUPT', `Refusing to publish: invalid embedding for chunk ${bad >= 0 ? (chunks[bad]?.id ?? bad) : 'probe'}`);
+		}
 
 		t0 = Date.now();
 		const parent = join(config.dataDir, 'indexes', projectId, snapshotId);
@@ -164,8 +195,9 @@ export async function buildIndex(
 					'probe.f32': sha256Hex(readFileSync(join(tmp, 'probe.f32'))),
 					'index.sqlite': sha256Hex(readFileSync(join(tmp, 'index.sqlite'))),
 				},
+				server: { runtime: server.runtime, cache_fingerprint_id: fingerprintId },
 				tokens: { max: Math.max(0, ...counts), mean: chunks.length ? Math.round(total / chunks.length) : 0, total },
-				embedded: { from_cache: chunks.length - missing.length, computed: missing.length },
+				embedded: { from_cache: chunks.length - missing.length, computed: missing.length, invalid_cache_entries: invalidCache },
 				timings_ms: { tokenize: tokenizeMs, embed: embedMs, write: 0 },
 				created_at: now().toISOString(),
 			};
@@ -191,7 +223,16 @@ export function loadIndex(dataDir: string, projectId: string, snapshotId: string
 	const id = indexId(projectId, snapshotId, recipe);
 	const dir = indexDir(dataDir, projectId, snapshotId, id);
 	const metaPath = join(dir, 'meta.json');
-	if (!existsSync(metaPath)) throw new CodeTrailError('UNKNOWN_INDEX', `No ready index for ${projectId}/${snapshotId} with this embedding recipe`);
+	if (!existsSync(metaPath)) {
+		const outdated = findOutdatedIndex(dataDir, projectId, snapshotId);
+		if (outdated) {
+			throw new CodeTrailError(
+				'INDEX_OUTDATED',
+				`Index ${outdated.id} for ${projectId}/${snapshotId} uses schema ${outdated.schema} (current ${INDEX_SCHEMA}) and is not used. Rebuild with: codetrail index ${projectId} ${snapshotId}`,
+			);
+		}
+		throw new CodeTrailError('UNKNOWN_INDEX', `No ready index for ${projectId}/${snapshotId} with this embedding recipe`);
+	}
 	let meta: IndexMeta;
 	try {
 		meta = JSON.parse(readFileSync(metaPath, 'utf8')) as IndexMeta;
@@ -220,6 +261,10 @@ export function loadIndex(dataDir: string, projectId: string, snapshotId: string
 	const pbuf = files['probe.f32'] as Buffer;
 	if (pbuf.byteLength !== meta.dims * 4) corrupt('probe size');
 	const probe = new Float32Array(pbuf.buffer.slice(pbuf.byteOffset, pbuf.byteOffset + pbuf.byteLength));
+	// Checksums only prove the files are unchanged since publish; also prove the values are sane.
+	const badRow = firstInvalidRow(vectors, meta.dims);
+	if (badRow >= 0) corrupt(`vector ${badRow} is not a finite unit vector`);
+	if (!isUnitVector(probe, meta.dims)) corrupt('probe is not a finite unit vector');
 	const db = new DatabaseSync(join(dir, 'index.sqlite'), { readOnly: true });
 	const rows = (db.prepare('SELECT count(*) AS n FROM chunks').get() as { n: number }).n;
 	if (rows !== meta.chunk_count) {

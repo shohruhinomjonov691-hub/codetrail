@@ -24,6 +24,7 @@ export type ErrorCode =
 	| 'TOKEN_LIMIT'
 	| 'INDEX_CORRUPT'
 	| 'UNKNOWN_INDEX'
+	| 'INDEX_OUTDATED'
 	| 'INVALID_QUERY'
 	| 'USAGE';
 

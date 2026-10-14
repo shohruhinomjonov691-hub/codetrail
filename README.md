@@ -122,6 +122,15 @@ npm run cli -- search gotrip <snapshot_id> "where is the tour inquiry sent?" --m
   - Each index is written to `data/indexes/<project>/<snapshot>/<index_id>/` (`index.sqlite` with FTS5, `vectors.f32`, `probe.f32`, `meta.json`).
   - It is built in a private temp directory under a cross-process lock and then renamed into place; `meta.json` is written last.
   - Loading re-checks the project, snapshot, recipe, the snapshot's `chunks.jsonl` hash and every file's SHA-256.
+- **Embedding cache.**
+  - Vectors are reused only between runs that agree on the recipe (model SHA-256, quantization, pooling, templates, dims, limits), the runtime build reported by the server (`build_info`) and the served-model fingerprint. The fingerprint is checked before the cache is read.
+  - A server that produces a different embedding space therefore never reads another server's vectors.
+  - Cached vectors are validated on read (dims, finite values, unit norm). A bad entry is recomputed.
+  - Index vectors are validated again before publish and on load. Checksums alone are not trusted.
+  - Cache files: `data/embed-cache/v2-<hash>.sqlite`.
+- **Older artifacts.**
+  - Schema-1 indexes (built before cache fingerprinting) are refused with `INDEX_OUTDATED`. The error names the rebuild command, `codetrail index <project> <snapshot>`, which writes a new index next to the old one.
+  - Old `data/embed-cache/<hash>.sqlite` files (without the `v2-` prefix) are never read. They can be deleted by hand.
 - **Model identity.**
   - The local GGUF file must match the pinned SHA-256.
   - The server must report the same model file and enough context.
@@ -133,7 +142,7 @@ npm run cli -- search gotrip <snapshot_id> "where is the tour inquiry sent?" --m
 - **Limits.**
   - Query embedding: 10 s timeout. Document batch: 120 s timeout.
   - At most 2 concurrent requests; batches of 8 texts.
-  - Question: at most 1000 characters. `k`: 1–20.
+  - Question: at most 1000 characters, and the fully formatted query must fit the recipe's token limit (counted with the server tokenizer before embedding; otherwise `TOKEN_LIMIT`). `k`: 1–20.
 - **Server flags.** Use `--cache-ram 0` on the embedding server. With the default prompt cache, the server's memory footprint on the development Mac grew to 10–11 GB; with the cache off it was about 1 GB, and the vectors were identical.
 
 ## Support boundaries

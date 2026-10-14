@@ -1,6 +1,6 @@
 import { basename } from 'node:path';
 import { CodeTrailError } from '../errors.js';
-import type { EmbeddingProvider } from './provider.js';
+import type { EmbeddingProvider, ServerInfo } from './provider.js';
 import type { EmbeddingRecipe } from './recipe.js';
 import { Semaphore, validateProviderUrl } from './url.js';
 
@@ -69,9 +69,10 @@ export class LlamaCppEmbedding implements EmbeddingProvider {
 		return json;
 	}
 
-	async verifyServer(): Promise<void> {
+	async verifyServer(): Promise<ServerInfo> {
 		const props = (await this.request('GET', '/props', undefined, this.opts.queryTimeoutMs)) as {
 			model_path?: string;
+			build_info?: string;
 			default_generation_settings?: { n_ctx?: number };
 		};
 		const served = props.model_path ? basename(props.model_path) : '';
@@ -82,6 +83,8 @@ export class LlamaCppEmbedding implements EmbeddingProvider {
 		if (ctx < this.recipe.maxTokens) {
 			throw new CodeTrailError('MODEL_MISMATCH', `Embedding server slot context ${ctx} is smaller than recipe maxTokens ${this.recipe.maxTokens}`);
 		}
+		const runtime = typeof props.build_info === 'string' && /^[\w.+-]{1,64}$/.test(props.build_info) ? props.build_info : 'unknown';
+		return { runtime };
 	}
 
 	countTokens(input: string, signal?: AbortSignal): Promise<number> {

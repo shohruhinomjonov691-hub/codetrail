@@ -11,6 +11,7 @@ export interface FakeLlamaOptions {
 	redirectTo?: string;
 	tokens?: (content: string) => number;
 	delayMs?: number;
+	buildInfo?: string;
 }
 
 export interface FakeLlama {
@@ -56,7 +57,7 @@ export async function startFakeLlama(opts: FakeLlamaOptions = {}): Promise<FakeL
 		}
 		const raw = await body(req);
 		if (req.url === '/props') {
-			send(res, 200, { model_path: opts.modelPath ?? '/models/fake-embed.gguf', default_generation_settings: { n_ctx: opts.nCtx ?? 1024 } });
+			send(res, 200, { model_path: opts.modelPath ?? '/models/fake-embed.gguf', build_info: opts.buildInfo ?? 'fake-b1', default_generation_settings: { n_ctx: opts.nCtx ?? 1024 } });
 			return;
 		}
 		if (req.url === '/tokenize') {

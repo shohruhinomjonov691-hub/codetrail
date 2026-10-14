@@ -5,8 +5,12 @@ import { readSnapshot } from '../snapshot.js';
 import { loadIndex } from '../retrieval/index.js';
 import { DEFAULT_TUNING, openSearchSession, type SearchHit, type SearchMode, type SearchTuning } from '../retrieval/search.js';
 import type { EmbeddingRecipe } from '../embedding/recipe.js';
-import { aggregate, distribution, overlaps, scoreQuestion, type Aggregate, type QuestionScore } from './metrics.js';
-import { validateFixture, type EvalFixture } from './fixture.js';
+import { aggregate, distribution, retrievesEvidence, scoreQuestion, type Aggregate, type QuestionScore, type ResolvedEvidence, type RetrievedChunk } from './metrics.js';
+import { anchorLines, normalizeFixture, snapshotLines, validateFixture, type EvalFixture, type Evidence } from './fixture.js';
+import { scanReferences, type ReferenceScanResult } from './reference-scan.js';
+
+/** Scoring rule identifier, recorded in every result so old and new reports are never mixed. */
+export const SCORING = 'anchor-line/required-groups v2';
 
 export interface QuestionResult {
 	id: string;
@@ -33,6 +37,7 @@ export interface ModeSummary {
 }
 
 export interface EvalResult {
+	scoring: typeof SCORING;
 	project: string;
 	snapshot_id: string;
 	fixture_snapshot_id: string;
@@ -44,17 +49,24 @@ export interface EvalResult {
 	questions: { total: number; answerable: number; abstention: number };
 	modes: ModeSummary[];
 	perQuestion: QuestionResult[];
+	/** "Is X used?" answers from a deterministic snapshot scan — separate from retrieval metrics. */
+	referenceScans: (ReferenceScanResult & { id: string })[];
 }
 
 export async function runEvaluation(
 	config: RuntimeConfig,
 	projectId: string,
 	snapshotId: string,
-	fixture: EvalFixture,
+	fixtureInput: EvalFixture,
 	recipe: EmbeddingRecipe,
 	opts: { modes: SearchMode[]; k: number; tuning?: Partial<SearchTuning>; provider?: EmbeddingProvider },
 ): Promise<EvalResult> {
+	const fixture = normalizeFixture(fixtureInput);
 	if (fixture.project !== projectId) throw new CodeTrailError('USAGE', `Fixture is for project ${fixture.project}, not ${projectId}`);
+	// The expected lines were verified against one exact snapshot; evaluating another one is refused.
+	if (fixture.snapshot_id !== snapshotId) {
+		throw new CodeTrailError('USAGE', `Fixture was written for snapshot ${fixture.snapshot_id}, not ${snapshotId}; refusing to evaluate`);
+	}
 	const { manifest, chunks } = readSnapshot(config.dataDir, projectId, snapshotId);
 	const problems = validateFixture(fixture, manifest, chunks);
 	if (problems.length > 0) throw new CodeTrailError('USAGE', `Fixture does not match the snapshot:\n- ${problems.join('\n- ')}`);
@@ -63,22 +75,26 @@ export async function runEvaluation(
 	const index = loadIndex(config.dataDir, projectId, snapshotId, recipe);
 	try {
 		const session = await openSearchSession(index, needsProvider ? opts.provider : undefined);
+		const lines = snapshotLines(chunks);
+		const resolve = (e: Evidence): ResolvedEvidence => ({ ...e, anchorLines: anchorLines(e, lines) });
+		const textById = new Map(index.chunks.map((c) => [c.id, c.text]));
 		const tuning: SearchTuning = { ...DEFAULT_TUNING, ...opts.tuning };
 		const perQuestion: QuestionResult[] = [];
 		for (const mode of opts.modes) {
 			for (const q of fixture.questions) {
 				// Retrieve the deeper candidate list once so the metric sees exactly the top k.
 				const hits: SearchHit[] = await session.search(q.question, { mode, k: opts.k, tuning });
+				const retrieved: RetrievedChunk[] = hits.map((h) => ({ source_id: h.source_id, path: h.path, start_line: h.start_line, end_line: h.end_line, text: textById.get(h.chunk_id) ?? '' }));
 				const top = hits[0];
 				const result: QuestionResult = {
 					id: q.id,
 					type: q.type,
 					mode,
-					score: q.type === 'abstention' ? null : scoreQuestion(hits, q.expected, opts.k),
+					score: q.type === 'abstention' ? null : scoreQuestion(retrieved, q.required.map((g) => g.map(resolve)), q.optional.map(resolve), opts.k),
 					top1: top ? { citation: top.citation, rrf: top.scores.rrf, vector_cosine: top.scores.vector_cosine } : null,
 					hitsReturned: hits.length,
 				};
-				if (q.type === 'abstention') result.absenceEvidenceFound = (q.absence_evidence ?? []).filter((e) => hits.some((h) => overlaps(h, e))).length;
+				if (q.type === 'abstention') result.absenceEvidenceFound = (q.absence_evidence ?? []).map(resolve).filter((e) => retrieved.some((h) => retrievesEvidence(h, e))).length;
 				perQuestion.push(result);
 			}
 		}
@@ -103,7 +119,9 @@ export async function runEvaluation(
 				answerableTop1VectorCosine: distribution(cos(answerable)),
 			};
 		});
+		const referenceScans = fixture.questions.filter((q) => q.reference_scan).map((q) => ({ id: q.id, ...scanReferences(chunks, q.reference_scan!) }));
 		return {
+			scoring: SCORING,
 			project: projectId,
 			snapshot_id: snapshotId,
 			fixture_snapshot_id: fixture.snapshot_id,
@@ -115,6 +133,7 @@ export async function runEvaluation(
 			questions: { total: fixture.questions.length, answerable: fixture.questions.filter((q) => q.type !== 'abstention').length, abstention: fixture.questions.filter((q) => q.type === 'abstention').length },
 			modes,
 			perQuestion,
+			referenceScans,
 		};
 	} finally {
 		index.db.close();
@@ -126,6 +145,8 @@ const f3 = (x: number | null): string => (x === null ? '–' : x.toFixed(3));
 export function renderMarkdown(r: EvalResult): string {
 	const out: string[] = [];
 	out.push(`### ${r.project} — snapshot \`${r.snapshot_id.slice(0, 12)}\`, index \`${r.index_id.slice(0, 12)}\``);
+	out.push('');
+	out.push(`Scoring: **${r.scoring}** — evidence counts only when one retrieved chunk contains its exact anchor line; recall is over required groups (any alternative satisfies a group); optional evidence is reported, never in the denominator.`);
 	out.push('');
 	out.push(`Model ${r.recipe.model} ${r.recipe.quant} (\`${r.recipe.sha256.slice(0, 12)}\`), runtime \`${r.runtime}\`, k=${r.k}, tuning ${JSON.stringify(r.tuning)}. Questions: ${r.questions.answerable} answerable + ${r.questions.abstention} abstention.`);
 	out.push('');
@@ -151,13 +172,24 @@ export function renderMarkdown(r: EvalResult): string {
 		out.push(`| ${m.mode} | ${f3(a.min)} / ${f3(a.median)} / ${f3(a.max)} | ${f3(b.min)} / ${f3(b.median)} / ${f3(b.max)} | ${f3(m.abstention.top1Rrf.median)} | ${m.abstention.absenceEvidenceFound.join(', ') || '–'} |`);
 	}
 	out.push('');
-	out.push(`| Question | Type | ${r.modes.map((m) => `${m.mode} first rank / found`).join(' | ')} |`);
+	out.push(`| Question | Type | ${r.modes.map((m) => `${m.mode} first rank / required groups`).join(' | ')} |`);
 	out.push(`| --- | --- | ${r.modes.map(() => '---').join(' | ')} |`);
 	const ids = [...new Set(r.perQuestion.map((q) => q.id))];
 	for (const id of ids) {
 		const rows = r.modes.map((m) => r.perQuestion.find((q) => q.id === id && q.mode === m.mode));
 		const type = rows[0]?.type ?? '';
-		out.push(`| ${id} | ${type} | ${rows.map((q) => (q?.score ? `${q.score.firstRank ?? '–'} / ${q.score.foundEvidence}` : `abst. (absence ${q?.absenceEvidenceFound ?? 0})`)).join(' | ')} |`);
+		out.push(`| ${id} | ${type} | ${rows.map((q) => (q?.score ? `${q.score.firstRank ?? '–'} / ${q.score.satisfiedGroups}/${q.score.requiredGroups}${q.score.optionalFound ? ` (+${q.score.optionalFound} opt)` : ''}` : `abst. (absence ${q?.absenceEvidenceFound ?? 0})`)).join(' | ')} |`);
+	}
+	if (r.referenceScans.length > 0) {
+		out.push('');
+		out.push('Reference scans (deterministic snapshot scan, not a retrieval metric):');
+		out.push('');
+		out.push('| Question | Identifier | Source | Usages outside the declaration | Expected | Result |');
+		out.push('| --- | --- | --- | --- | --- | --- |');
+		for (const s of r.referenceScans) {
+			const where = s.usages.map((u) => `${u.path}:${u.line}`).join(', ') || 'none';
+			out.push(`| ${s.id} | \`${s.identifier}\` | ${s.source_id} | ${s.usages.length} (${where}) | ${s.expect_usages} | ${s.passed ? 'pass' : 'FAIL'} |`);
+		}
 	}
 	return out.join('\n') + '\n';
 }

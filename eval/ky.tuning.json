@@ -1,5 +1,5 @@
 {
-  "schema": 1,
+  "schema": 2,
   "project": "ky",
   "snapshot_id": "9d5e668f5c4729d890abf890",
   "split": "tuning",
@@ -8,13 +8,24 @@
       "id": "K1",
       "type": "locate",
       "question": "How is the delay between retries computed, including jitter and the backoff limit?",
-      "expected": [
+      "required": [
+        [
+          {
+            "source_id": "lib",
+            "path": "source/core/Ky.ts",
+            "start_line": 665,
+            "end_line": 665,
+            "anchor": "#calculateDelay"
+          }
+        ]
+      ],
+      "optional": [
         {
           "source_id": "lib",
           "path": "source/core/Ky.ts",
-          "start_line": 665,
-          "end_line": 686,
-          "anchor": "#calculateDelay"
+          "start_line": 685,
+          "end_line": 685,
+          "anchor": "backoffLimit"
         }
       ]
     },
@@ -22,34 +33,66 @@
       "id": "K2",
       "type": "config",
       "question": "Which HTTP methods and status codes are retried by default, and how many times?",
-      "expected": [
-        {
-          "source_id": "lib",
-          "path": "source/utils/normalize.ts",
-          "start_line": 17,
-          "end_line": 31,
-          "anchor": "retryStatusCodes"
-        }
-      ]
+      "required": [
+        [
+          {
+            "source_id": "lib",
+            "path": "source/utils/normalize.ts",
+            "start_line": 19,
+            "end_line": 19,
+            "anchor": "retryStatusCodes"
+          }
+        ],
+        [
+          {
+            "source_id": "lib",
+            "path": "source/utils/normalize.ts",
+            "start_line": 17,
+            "end_line": 17,
+            "anchor": "retryMethods"
+          }
+        ],
+        [
+          {
+            "source_id": "lib",
+            "path": "source/utils/normalize.ts",
+            "start_line": 26,
+            "end_line": 26,
+            "anchor": "limit: 2"
+          }
+        ]
+      ],
+      "optional": []
     },
     {
       "id": "K3",
       "type": "flow",
       "question": "How are Retry-After and rate-limit headers used when retrying?",
-      "expected": [
+      "required": [
+        [
+          {
+            "source_id": "lib",
+            "path": "source/core/retry-timing.ts",
+            "start_line": 26,
+            "end_line": 26,
+            "anchor": "Retry-After"
+          },
+          {
+            "source_id": "lib",
+            "path": "source/core/Ky.ts",
+            "start_line": 739,
+            "end_line": 739,
+            "anchor": "afterStatusCodes"
+          }
+        ]
+      ],
+      "optional": [
         {
           "source_id": "lib",
           "path": "source/core/retry-timing.ts",
-          "start_line": 25,
-          "end_line": 45,
-          "anchor": "Retry-After"
-        },
-        {
-          "source_id": "lib",
-          "path": "source/core/Ky.ts",
-          "start_line": 734,
-          "end_line": 742,
-          "anchor": "afterStatusCodes"
+          "start_line": 32,
+          "end_line": 32,
+          "anchor": "RateLimit-Reset"
         }
       ]
     },
@@ -57,19 +100,30 @@
       "id": "K4",
       "type": "locate",
       "question": "How is the request timeout implemented and which error does it raise?",
-      "expected": [
-        {
-          "source_id": "lib",
-          "path": "source/utils/timeout.ts",
-          "start_line": 11,
-          "end_line": 27,
-          "anchor": "TimeoutError"
-        },
+      "required": [
+        [
+          {
+            "source_id": "lib",
+            "path": "source/utils/timeout.ts",
+            "start_line": 27,
+            "end_line": 27,
+            "anchor": "new TimeoutError"
+          },
+          {
+            "source_id": "lib",
+            "path": "source/utils/timeout.ts",
+            "start_line": 22,
+            "end_line": 22,
+            "anchor": "setTimeout"
+          }
+        ]
+      ],
+      "optional": [
         {
           "source_id": "lib",
           "path": "source/errors/TimeoutError.ts",
           "start_line": 7,
-          "end_line": 11,
+          "end_line": 7,
           "anchor": "class TimeoutError"
         }
       ]
@@ -78,19 +132,23 @@
       "id": "K5",
       "type": "error",
       "question": "When is an HTTPError thrown for a non-2xx response?",
-      "expected": [
-        {
-          "source_id": "lib",
-          "path": "source/core/Ky.ts",
-          "start_line": 632,
-          "end_line": 632,
-          "anchor": "new HTTPError"
-        },
+      "required": [
+        [
+          {
+            "source_id": "lib",
+            "path": "source/core/Ky.ts",
+            "start_line": 632,
+            "end_line": 632,
+            "anchor": "new HTTPError"
+          }
+        ]
+      ],
+      "optional": [
         {
           "source_id": "lib",
           "path": "source/errors/HTTPError.ts",
           "start_line": 15,
-          "end_line": 22,
+          "end_line": 15,
           "anchor": "class HTTPError"
         }
       ]
@@ -99,54 +157,83 @@
       "id": "K6",
       "type": "locate",
       "question": "What is the difference between ky.create and ky.extend?",
-      "expected": [
-        {
-          "source_id": "lib",
-          "path": "source/index.ts",
-          "start_line": 42,
-          "end_line": 43,
-          "anchor": "ky.extend"
-        }
-      ]
+      "required": [
+        [
+          {
+            "source_id": "lib",
+            "path": "source/index.ts",
+            "start_line": 42,
+            "end_line": 42,
+            "anchor": "ky.create"
+          }
+        ],
+        [
+          {
+            "source_id": "lib",
+            "path": "source/index.ts",
+            "start_line": 43,
+            "end_line": 43,
+            "anchor": "ky.extend"
+          }
+        ]
+      ],
+      "optional": []
     },
     {
       "id": "K7",
       "type": "flow",
       "question": "How are the prefix and baseUrl options combined with the request input?",
-      "expected": [
-        {
-          "source_id": "lib",
-          "path": "source/core/Ky.ts",
-          "start_line": 245,
-          "end_line": 265,
-          "anchor": "resolveInput"
-        }
-      ]
+      "required": [
+        [
+          {
+            "source_id": "lib",
+            "path": "source/core/Ky.ts",
+            "start_line": 246,
+            "end_line": 246,
+            "anchor": "resolveInput"
+          }
+        ]
+      ],
+      "optional": []
     },
     {
       "id": "K8",
       "type": "locate",
       "question": "How does download progress reporting work?",
-      "expected": [
-        {
-          "source_id": "lib",
-          "path": "source/core/Ky.ts",
-          "start_line": 651,
-          "end_line": 657,
-          "anchor": "onDownloadProgress"
-        }
-      ]
+      "required": [
+        [
+          {
+            "source_id": "lib",
+            "path": "source/core/Ky.ts",
+            "start_line": 652,
+            "end_line": 652,
+            "anchor": "onDownloadProgress"
+          }
+        ]
+      ],
+      "optional": []
     },
     {
       "id": "K9",
       "type": "error",
       "question": "What happens when a response is larger than maxResponseSize?",
-      "expected": [
+      "required": [
+        [
+          {
+            "source_id": "lib",
+            "path": "source/utils/body.ts",
+            "start_line": 189,
+            "end_line": 189,
+            "anchor": "new ResponseSizeError"
+          }
+        ]
+      ],
+      "optional": [
         {
           "source_id": "lib",
           "path": "source/errors/ResponseSizeError.ts",
           "start_line": 20,
-          "end_line": 25,
+          "end_line": 20,
           "anchor": "class ResponseSizeError"
         },
         {
@@ -162,27 +249,32 @@
       "id": "K10",
       "type": "config",
       "question": "What is the default request timeout?",
-      "expected": [
-        {
-          "source_id": "lib",
-          "path": "source/core/Ky.ts",
-          "start_line": 218,
-          "end_line": 218,
-          "anchor": "timeout = 10_000"
-        }
-      ]
+      "required": [
+        [
+          {
+            "source_id": "lib",
+            "path": "source/core/Ky.ts",
+            "start_line": 218,
+            "end_line": 218,
+            "anchor": "timeout = 10_000"
+          }
+        ]
+      ],
+      "optional": []
     },
     {
       "id": "KA1",
       "type": "abstention",
       "question": "How does ky cache responses in IndexedDB?",
-      "expected": []
+      "required": [],
+      "optional": []
     },
     {
       "id": "KA2",
       "type": "abstention",
       "question": "How does ky handle GraphQL subscriptions over WebSocket?",
-      "expected": []
+      "required": [],
+      "optional": []
     }
   ]
 }

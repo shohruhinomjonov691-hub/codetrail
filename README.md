@@ -152,39 +152,36 @@ npm run cli -- eval   gotrip <snapshot_id> eval/gotrip.tuning.json --mode all --
 
 This evaluation measures **retrieval only**; no answers are generated. The numbers are **tuning-set results**: there are few questions, and the defaults were chosen on these same questions. The holdout set was neither written nor read. All timings were measured on the development Mac, not a server.
 
-- **Fixtures:** `eval/gotrip.tuning.json` (GoTrip T1–T18) and `eval/ky.tuning.json` (`sindresorhus/ky`, 10 questions plus 2 abstention).
-  - Every expected range is validated against the evaluated snapshot: the file must be included, the range must fit inside it, and an anchor text must appear inside the range.
-  - Abstention questions have no expected evidence and are kept out of the recall numbers.
+- **Fixtures (schema 2):** `eval/gotrip.tuning.json` (GoTrip T1–T18) and `eval/ky.tuning.json` (`sindresorhus/ky`, 10 questions plus 2 abstention).
+  - Each answerable question lists `required` evidence groups, where any one alternative in a group satisfies it, plus `optional` evidence.
+  - Every evidence item names an exact single-line anchor. It is validated against the evaluated snapshot: the file must be included and the anchor must appear inside the range.
+  - The runner refuses a fixture whose `snapshot_id` is not the evaluated snapshot. In that case nothing is written.
+- **Scoring (`anchor-line/required-groups v2`):**
+  - An evidence item counts as retrieved only when **one** retrieved chunk contains its anchor line, and that line in the chunk text contains the anchor. Chunks are never combined, and a range overlap alone does not count.
+  - Hit@8: at least one required group is satisfied.
+  - Evidence Recall@8: satisfied required groups divided by all required groups. Optional evidence is reported but never counted in the denominator.
+  - MRR@8: reciprocal rank of the first chunk that satisfies any required group.
+  - Abstention questions are kept out of the recall numbers; their top-1 scores are reported separately.
+- **"Is X used?" questions** (T16) also get a **reference scan**: a deterministic whole-word scan of the snapshot for uses outside the declaration. It is reported apart from retrieval. Finding a declaration is not evidence of usage. For T16 the scan finds 0 uses of `START_CONVERSATION` (expected 0).
 - **Command:**
   ```bash
   npm run cli -- eval gotrip <snapshot_id> eval/gotrip.tuning.json --mode all --k 8 --out eval/reports/<date>
   ```
-- **Metrics (answerable questions only):**
-  - Hit@8: at least one expected range overlaps a retrieved chunk.
-  - Evidence Recall@8: the fraction of expected ranges overlapped.
-  - MRR@8: reciprocal rank of the first overlapping chunk.
 
-Results with the shipped defaults (embedding: Qwen3-Embedding-0.6B Q8_0, llama.cpp b11606):
+v2 results, on the same snapshots and indexes. Embedding: Qwen3-Embedding-0.6B Q8_0 on llama.cpp b11606. "Before" is the pre-tuning setting (BM25 `[2,3,1,1]`, RRF k 60, pool 50); "shipped" is the tuned default (BM25 `[3,3,1,2]`, RRF k 30, pool 100). The tuning was **not** redone for v2.
 
-| Corpus | Mode | Hit@8 | Evidence Recall@8 | MRR@8 |
+| Corpus | Mode | Hit@8 before → shipped | Evidence Recall@8 before → shipped | MRR@8 before → shipped |
 | --- | --- | --- | --- | --- |
-| GoTrip (16 + 2) | bm25 | 0.500 | 0.346 | 0.364 |
-| | vector | 0.813 | 0.506 | 0.493 |
-| | **hybrid** | **0.875** | **0.579** | **0.596** |
-| ky (10 + 2) | bm25 | 0.300 | 0.250 | 0.150 |
-| | vector | 0.700 | 0.550 | 0.395 |
-| | **hybrid** | **0.800** | **0.600** | **0.424** |
+| GoTrip (16 + 2) | bm25 | 0.500 → 0.438 | 0.438 → 0.406 | 0.362 → 0.352 |
+| | vector | 0.750 → 0.750 | 0.625 → 0.625 | 0.472 → 0.472 |
+| | **hybrid** | 0.688 → **0.812** | 0.562 → **0.656** | 0.457 → **0.476** |
+| ky (10 + 2) | bm25 | 0.200 → 0.200 | 0.200 → 0.200 | 0.034 → 0.029 |
+| | vector | 0.600 → 0.600 | 0.600 → 0.600 | 0.309 → 0.309 |
+| | **hybrid** | 0.600 → **0.700** | 0.600 → **0.700** | 0.281 → **0.249** |
 
-- **Target missed.** The target was hybrid Evidence Recall@8 ≥ 0.80; the result is 0.58 (GoTrip) and 0.60 (ky).
-- **Tuning (before → after).** A 108-configuration grid was run over BM25 column weights, RRF k, candidate pool size, BM25 stopwords and RRF weights, on tuning questions only.
-  - Hybrid recall: GoTrip 0.496 → 0.579, ky 0.500 → 0.600.
-  - Chosen settings: BM25 weights `[3,3,1,2]` (path, symbol, text, identifiers), RRF k = 30, pool = 100.
-  - Excluding `public/locales/**` from GoTrip did not help (0.579 → 0.558) and was not adopted.
-- **Weakest question types.**
-  - Multi-hop "flow" questions: Evidence Recall@8 is 0.40 on GoTrip. A single question can carry up to 5 evidence ranges.
-  - Single-constant "config" questions, such as the default retry status codes or the default timeout.
-- **Abstention.** Retrieval scores alone cannot separate unanswerable questions. On GoTrip, the top-1 cosine for abstention questions is 0.33–0.54 in hybrid mode and 0.37–0.65 in vector mode, while answerable questions start at 0.36 and 0.44. Abstention therefore has to be decided at answer time (stage D), with citation checks, not by a score threshold alone.
-- **Reports:** `eval/reports/2026-10-14-baseline/` and `eval/reports/2026-10-14-tuned/` contain per-question JSON and Markdown.
+- **Target missed.** The target was hybrid Evidence Recall@8 ≥ 0.80; v2 gives 0.656 (GoTrip) and 0.700 (ky).
+- **Abstention.** Retrieval scores alone cannot separate unanswerable questions (see the per-report abstention tables). Abstention has to be decided at answer time (stage D), with citation checks.
+- **Reports:** `eval/reports/2026-10-14-v2-baseline/` and `eval/reports/2026-10-14-v2-tuned/`. The earlier `eval/reports/2026-10-14-{baseline,tuned}/` use the superseded v1 scoring (line overlap, every expected item required). They are kept for history and must not be compared with v2.
 
 ## Support boundaries
 

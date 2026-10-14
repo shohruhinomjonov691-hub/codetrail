@@ -5,34 +5,52 @@ export interface RetrievedChunk {
 	path: string;
 	start_line: number;
 	end_line: number;
+	/** Exact chunk text, needed to confirm the anchor is in what was retrieved. */
+	text: string;
 }
 
-export function overlaps(hit: RetrievedChunk, e: Evidence): boolean {
-	return hit.source_id === e.source_id && hit.path === e.path && hit.start_line <= e.end_line && hit.end_line >= e.start_line;
+/** Evidence plus the snapshot lines (inside its range) that contain its anchor. */
+export interface ResolvedEvidence extends Evidence {
+	anchorLines: number[];
+}
+
+/**
+ * True when this one chunk retrieved the evidence: it covers an anchor line and
+ * its own text at that line contains the anchor. A range overlap alone is not
+ * enough, and chunks are not combined.
+ */
+export function retrievesEvidence(hit: RetrievedChunk, e: ResolvedEvidence): boolean {
+	if (hit.source_id !== e.source_id || hit.path !== e.path) return false;
+	const lines = hit.text.split('\n');
+	return e.anchorLines.some((l) => l >= hit.start_line && l <= hit.end_line && (lines[l - hit.start_line] ?? '').includes(e.anchor));
 }
 
 export interface QuestionScore {
-	/** At least one expected range overlaps a retrieved chunk in the top k. */
+	/** At least one required group is satisfied in the top k. */
 	hit: boolean;
-	/** Fraction of expected ranges overlapped by some retrieved chunk in the top k. */
+	/** Satisfied required groups / required groups (optional evidence never counts). */
 	recall: number;
-	/** 1 / rank of the first retrieved chunk that overlaps any expected range (0 if none in top k). */
+	/** 1 / rank of the first chunk that retrieves any alternative of any required group (0 if none in top k). */
 	reciprocalRank: number;
 	firstRank: number | null;
-	foundEvidence: number;
+	satisfiedGroups: number;
+	requiredGroups: number;
+	optionalFound: number;
 }
 
-/** Scores one answerable question against the top-k retrieved chunks (in rank order). */
-export function scoreQuestion(retrieved: readonly RetrievedChunk[], expected: readonly Evidence[], k: number): QuestionScore {
+export function scoreQuestion(retrieved: readonly RetrievedChunk[], required: readonly (readonly ResolvedEvidence[])[], optional: readonly ResolvedEvidence[], k: number): QuestionScore {
 	const top = retrieved.slice(0, k);
-	const found = expected.filter((e) => top.some((h) => overlaps(h, e))).length;
-	const firstIdx = top.findIndex((h) => expected.some((e) => overlaps(h, e)));
+	const found = (e: ResolvedEvidence): boolean => top.some((h) => retrievesEvidence(h, e));
+	const satisfied = required.filter((group) => group.some(found)).length;
+	const firstIdx = top.findIndex((h) => required.some((group) => group.some((e) => retrievesEvidence(h, e))));
 	return {
-		hit: found > 0,
-		recall: expected.length === 0 ? 0 : found / expected.length,
+		hit: satisfied > 0,
+		recall: required.length === 0 ? 0 : satisfied / required.length,
 		reciprocalRank: firstIdx < 0 ? 0 : 1 / (firstIdx + 1),
 		firstRank: firstIdx < 0 ? null : firstIdx + 1,
-		foundEvidence: found,
+		satisfiedGroups: satisfied,
+		requiredGroups: required.length,
+		optionalFound: optional.filter(found).length,
 	};
 }
 

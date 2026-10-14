@@ -180,3 +180,108 @@ export function validateGroundedAnswer(raw: string, excerpts: readonly Excerpt[]
 	});
 	return reasons.length ? { ok: false, reasons, answer } : { ok: true, answer };
 }
+
+/**
+ * D0c protocol (cited lines, server-derived quotes): the model names only the
+ * excerpt and the line range; the server copies the cited text itself, so the
+ * model is never asked to reproduce code. Strings and arrays are bounded so a
+ * schema-valid answer always fits the output budget (see CITED_OUTPUT_BUDGET).
+ */
+export const CITED_LIMITS = { maxClaims: 6, maxTextChars: 240, maxCitedLines: 12 } as const;
+
+export const CITED_SCHEMA = {
+	type: 'object',
+	additionalProperties: false,
+	required: ['status', 'claims'],
+	properties: {
+		status: { type: 'string', enum: ['answered', 'insufficient_evidence'] },
+		claims: {
+			type: 'array',
+			maxItems: CITED_LIMITS.maxClaims,
+			items: {
+				type: 'object',
+				additionalProperties: false,
+				required: ['text', 'source_id', 'lines'],
+				properties: {
+					text: { type: 'string', minLength: 1, maxLength: CITED_LIMITS.maxTextChars },
+					source_id: { type: 'string', pattern: '^S[0-9]{1,2}$' },
+					lines: {
+						type: 'object',
+						additionalProperties: false,
+						required: ['start', 'end'],
+						properties: { start: { type: 'integer' }, end: { type: 'integer' } },
+					},
+				},
+			},
+		},
+	},
+} as const;
+
+/**
+ * Output budget for CITED_SCHEMA. Pessimistic per claim: 240 chars of text at
+ * 2 chars/token = 120 tokens, plus ~50 tokens of keys, ids, numbers and
+ * whitespace → ~170; 6 claims + envelope ≈ 1040 tokens. 1536 leaves ~1.5×
+ * headroom; a response that still stops on the length limit is "incomplete".
+ */
+export const CITED_OUTPUT_BUDGET = 1536;
+
+export interface CitedClaim {
+	text: string;
+	source_id: string;
+	lines: { start: number; end: number };
+	/** Filled in by the server from the cited excerpt lines, never by the model. */
+	citation?: { path: string; source: string; start: number; end: number; quote: string };
+}
+
+export interface CitedAnswer {
+	status: 'answered' | 'insufficient_evidence';
+	claims: CitedClaim[];
+}
+
+export type CitedValidation = { ok: true; answer: CitedAnswer } | { ok: false; reasons: string[] };
+
+/**
+ * Fail-closed check of a D0c answer. Rejects the WHOLE answer if the generation
+ * did not finish (`finishReason` other than "stop"), the JSON is invalid or has
+ * the wrong shape, `answered` has no claims or `insufficient_evidence` has
+ * claims, or any claim cites an unknown excerpt, lines it did not show, a
+ * reversed range or more than maxCitedLines lines. On success every claim gets a
+ * server-built citation (path + exact cited text). Valid ≠ correct.
+ */
+export function validateCitedAnswer(raw: string, finishReason: string | null, excerpts: readonly Excerpt[]): CitedValidation {
+	if (finishReason !== 'stop') return { ok: false, reasons: [`incomplete generation (finish_reason ${String(finishReason)})`] };
+	let parsed: unknown;
+	try {
+		parsed = JSON.parse(raw);
+	} catch {
+		return { ok: false, reasons: ['not valid JSON'] };
+	}
+	if (!isObj(parsed) || Object.keys(parsed).sort().join() !== 'claims,status') return { ok: false, reasons: ['unexpected top-level shape'] };
+	const { status, claims } = parsed;
+	if (status !== 'answered' && status !== 'insufficient_evidence') return { ok: false, reasons: ['unknown status'] };
+	if (!Array.isArray(claims)) return { ok: false, reasons: ['claims is not an array'] };
+	const reasons: string[] = [];
+	if (status === 'answered' && claims.length === 0) reasons.push('answered without claims');
+	if (status === 'insufficient_evidence' && claims.length > 0) reasons.push('insufficient_evidence with claims');
+	if (claims.length > CITED_LIMITS.maxClaims) reasons.push(`more than ${CITED_LIMITS.maxClaims} claims`);
+	const byId = new Map(excerpts.map((e) => [e.id, e]));
+	const out: CitedClaim[] = [];
+	claims.forEach((c: unknown, i) => {
+		const at = `claim ${i + 1}`;
+		if (!isObj(c) || Object.keys(c).sort().join() !== 'lines,source_id,text') return void reasons.push(`${at}: unexpected shape`);
+		const { text, source_id, lines } = c;
+		if (typeof text !== 'string' || !text.trim() || text.length > CITED_LIMITS.maxTextChars) return void reasons.push(`${at}: invalid text`);
+		if (!isObj(lines) || !Number.isInteger(lines.start) || !Number.isInteger(lines.end)) return void reasons.push(`${at}: invalid lines`);
+		const start = lines.start as number;
+		const end = lines.end as number;
+		if (start > end) return void reasons.push(`${at}: start > end`);
+		if (end - start + 1 > CITED_LIMITS.maxCitedLines) return void reasons.push(`${at}: cites more than ${CITED_LIMITS.maxCitedLines} lines`);
+		const e = typeof source_id === 'string' ? byId.get(source_id) : undefined;
+		if (!e) return void reasons.push(`${at}: unknown excerpt ${String(source_id)}`);
+		const shown = new Map(e.lines.map((l) => [l.line, l.text]));
+		for (let n = start; n <= end; n++) if (!shown.has(n)) return void reasons.push(`${at}: line ${n} was not shown in ${e.id}`);
+		const quote = Array.from({ length: end - start + 1 }, (_, k) => shown.get(start + k) as string).join('\n');
+		out.push({ text, source_id: e.id, lines: { start, end }, citation: { path: e.path, source: e.source_id, start, end, quote } });
+	});
+	return reasons.length ? { ok: false, reasons } : { ok: true, answer: { status, claims: out } };
+}

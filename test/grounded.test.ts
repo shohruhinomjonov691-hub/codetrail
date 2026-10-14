@@ -3,7 +3,7 @@
  * rejects the whole answer on any problem (fail-closed).
  */
 import { describe, expect, it } from 'vitest';
-import { compactLines, EXCERPT_LIMITS, fileLines, GROUNDED_SCHEMA, queryTerms, renderExcerpt, validateGroundedAnswer, type Excerpt } from '../src/eval/grounded.js';
+import { CITED_LIMITS, CITED_OUTPUT_BUDGET, CITED_SCHEMA, compactLines, EXCERPT_LIMITS, fileLines, GROUNDED_SCHEMA, queryTerms, renderExcerpt, validateCitedAnswer, validateGroundedAnswer, type Excerpt } from '../src/eval/grounded.js';
 
 describe('queryTerms / compactLines / fileLines', () => {
 	it('drops stopwords and short words, splits identifiers', () => {
@@ -86,5 +86,54 @@ describe('validateGroundedAnswer — fail-closed', () => {
 		const r = v({ status: 'answered', claims: [claim(), claim({ quote: 'something the code never says' })] });
 		expect(r.ok).toBe(false);
 		if (!r.ok) expect(r.reasons).toEqual(['claim 2: quote not found in S1:L27-L27']);
+	});
+});
+
+describe('D0c cited-lines protocol — server-derived citations, fail-closed', () => {
+	const ex: Excerpt[] = [
+		{ id: 'S1', source_id: 'lib', path: 'timeout.ts', lines: [{ line: 22, text: 'a' }, { line: 23, text: 'b' }, { line: 27, text: 'reject(new TimeoutError(request));' }] },
+	];
+	const ok = { status: 'answered', claims: [{ text: 'TimeoutError is raised.', source_id: 'S1', lines: { start: 27, end: 27 } }] };
+	const v = (x: unknown, finish: string | null = 'stop') => validateCitedAnswer(typeof x === 'string' ? x : JSON.stringify(x), finish, ex);
+
+	it('builds the citation text from the excerpt, not from the model', () => {
+		const r = v(ok);
+		expect(r.ok).toBe(true);
+		if (r.ok) expect(r.answer.claims[0]?.citation).toEqual({ path: 'timeout.ts', source: 'lib', start: 27, end: 27, quote: 'reject(new TimeoutError(request));' });
+		const two = v({ status: 'answered', claims: [{ text: 'x', source_id: 'S1', lines: { start: 22, end: 23 } }] });
+		if (two.ok) expect(two.answer.claims[0]?.citation?.quote).toBe('a\nb');
+		expect(v({ status: 'insufficient_evidence', claims: [] }).ok).toBe(true);
+	});
+
+	it.each([
+		['incomplete generation', ok, 'length'],
+		['missing finish reason', ok, null],
+		['not JSON', '{"status":', 'stop'],
+		['a quote field (model must not copy text)', { status: 'answered', claims: [{ ...ok.claims[0], quote: 'x' }] }, 'stop'],
+		['answered without claims', { status: 'answered', claims: [] }, 'stop'],
+		['abstention with claims', { status: 'insufficient_evidence', claims: ok.claims }, 'stop'],
+		['unknown excerpt', { status: 'answered', claims: [{ ...ok.claims[0], source_id: 'S2' }] }, 'stop'],
+		['line not shown', { status: 'answered', claims: [{ ...ok.claims[0], lines: { start: 23, end: 27 } }] }, 'stop'],
+		['reversed range', { status: 'answered', claims: [{ ...ok.claims[0], lines: { start: 27, end: 22 } }] }, 'stop'],
+		['too many lines', { status: 'answered', claims: [{ ...ok.claims[0], lines: { start: 1, end: CITED_LIMITS.maxCitedLines + 1 } }] }, 'stop'],
+		['text too long', { status: 'answered', claims: [{ ...ok.claims[0], text: 'x'.repeat(CITED_LIMITS.maxTextChars + 1) }] }, 'stop'],
+		['too many claims', { status: 'answered', claims: Array(CITED_LIMITS.maxClaims + 1).fill(ok.claims[0]) }, 'stop'],
+	])('rejects: %s', (_, input, finish) => {
+		expect(v(input, finish as string | null).ok).toBe(false);
+	});
+
+	it('one bad claim rejects the whole answer', () => {
+		const r = v({ status: 'answered', claims: [ok.claims[0], { ...ok.claims[0], source_id: 'S9' }] });
+		expect(r).toEqual({ ok: false, reasons: ['claim 2: unknown excerpt S9'] });
+	});
+
+	it('the schema bounds strings and arrays, and the output budget covers the bound', () => {
+		const item = CITED_SCHEMA.properties.claims.items;
+		expect(item.required).toEqual(['text', 'source_id', 'lines']);
+		expect(item.properties.text.maxLength).toBe(CITED_LIMITS.maxTextChars);
+		expect(CITED_SCHEMA.properties.claims.maxItems).toBe(CITED_LIMITS.maxClaims);
+		// pessimistic: 2 chars/token for text + 50 tokens of structure per claim, + 40 envelope
+		const worst = CITED_LIMITS.maxClaims * (CITED_LIMITS.maxTextChars / 2 + 50) + 40;
+		expect(CITED_OUTPUT_BUDGET).toBeGreaterThanOrEqual(Math.ceil(worst * 1.4));
 	});
 });

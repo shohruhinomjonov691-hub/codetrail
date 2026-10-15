@@ -74,8 +74,11 @@ export class OpenAIResponsesProvider implements GenerationProvider {
 			store: false,
 		};
 		if (this.options.reasoningEffort !== 'none') body.reasoning = { effort: this.options.reasoningEffort };
+		if (request.signal?.aborted) throw new GenerationError('provider', 'Request was cancelled before it was sent');
+		// `controller` is the deadline only, so a timeout is told apart from a caller cancellation.
 		const controller = new AbortController();
 		const timer = setTimeout(() => controller.abort(), this.options.timeoutMs);
+		const signal = request.signal ? AbortSignal.any([controller.signal, request.signal]) : controller.signal;
 		let res: Response;
 		try {
 			res = await this.fetchImpl(`${this.baseUrl}/v1/responses`, {
@@ -83,7 +86,7 @@ export class OpenAIResponsesProvider implements GenerationProvider {
 				headers: { Authorization: `Bearer ${this.options.apiKey}`, 'Content-Type': 'application/json' },
 				body: JSON.stringify(body),
 				redirect: 'error',
-				signal: controller.signal,
+				signal,
 			});
 		} catch (err) {
 			clearTimeout(timer);
@@ -94,6 +97,8 @@ export class OpenAIResponsesProvider implements GenerationProvider {
 		try {
 			parsed = (await res.json()) as ResponsesBody;
 		} catch {
+			// The deadline can expire after the headers, while the body is still being read.
+			if (controller.signal.aborted) throw new GenerationError('timeout', `OpenAI response body timed out after ${this.options.timeoutMs} ms`);
 			parsed = null;
 		} finally {
 			clearTimeout(timer);

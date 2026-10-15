@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
 import { fileURLToPath } from 'node:url';
-import { AnswerService, SearchUnavailableError } from '../answer/service.js';
+import { AnswerService, RequestCancelledError, SearchUnavailableError } from '../answer/service.js';
 import { CodeTrailError } from '../errors.js';
 import { assertId, assertSnapshotId } from '../ids.js';
 
@@ -137,13 +137,23 @@ export function createHttpServer(service: AnswerService, options: ServerOptions 
 					}
 					const forwarded = options.trustProxy ? String(req.headers['x-forwarded-for'] ?? '').split(',')[0]?.trim() : '';
 					const client = forwarded || req.socket.remoteAddress || 'unknown';
-					const result = await service.explain(target.project_id, body.question, client, target.snapshot_id);
+					// A client that disconnects cancels its explanation (queued calls never reach the provider).
+					const cancel = new AbortController();
+					res.on('close', () => {
+						if (!res.writableEnded) cancel.abort();
+					});
+					const result = await service.explain(target.project_id, body.question, client, target.snapshot_id, cancel.signal);
 					note = `mode=${result.mode}${result.reason ? ` reason=${result.reason}` : ''}${result.cached ? ' cached' : ''}`;
 					send(res, 200, result);
 					return done(200);
 				}
 				throw new HttpError(404, 'NOT_FOUND', 'Not found');
 			} catch (err) {
+				if (err instanceof RequestCancelledError) {
+					note = 'client closed';
+					if (!res.writableEnded) res.destroy();
+					return done(499);
+				}
 				const e = errorStatus(err);
 				if (e.status === 500) note = `error=${err instanceof Error ? err.name : 'unknown'}`;
 				send(res, e.status, { error: { code: e.code, message: e.message } });

@@ -12,6 +12,8 @@ export interface GenerationRequest {
 	schema: Record<string, unknown>;
 	schemaName: string;
 	maxOutputTokens: number;
+	/** The caller's cancellation (e.g. HTTP client gone). Aborting a sent request does not undo its cost. */
+	signal?: AbortSignal;
 }
 
 export interface GenerationResult {

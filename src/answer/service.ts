@@ -87,6 +87,14 @@ export interface AnswerLimits {
 	cacheSize: number;
 }
 
+/** The caller went away (HTTP client disconnected) before a provider call was needed or finished. */
+export class RequestCancelledError extends Error {
+	constructor() {
+		super('request cancelled');
+		this.name = 'RequestCancelledError';
+	}
+}
+
 /** Local search failed (index missing, embedding server down, …) — shown apart from AI problems. */
 export class SearchUnavailableError extends Error {
 	constructor(message: string) {
@@ -124,16 +132,44 @@ export class ExplainLimiter {
 		if (this.calls.size > 10_000) for (const [k, v] of this.calls) if (v.every((x) => t - x >= 60_000)) this.calls.delete(k);
 		return null;
 	}
+
+	/** Gives back a taken slot whose provider call never started (the request was cancelled while queued). */
+	refund(client: string): void {
+		const recent = this.calls.get(client);
+		if (recent?.length) recent.pop();
+		if (this.dayCount > 0) this.dayCount--;
+	}
 }
 
+/**
+ * Counting gate for provider calls. A waiter whose signal aborts is removed from
+ * the queue (it never runs and never takes a slot); a slot is re-checked against
+ * the signal right before `fn` starts.
+ */
 class Semaphore {
 	private active = 0;
 	private readonly waiters: (() => void)[] = [];
 	constructor(private readonly limit: number) {}
-	async run<T>(fn: () => Promise<T>): Promise<T> {
-		if (this.active >= this.limit) await new Promise<void>((resolve) => this.waiters.push(resolve));
+	async run<T>(fn: () => Promise<T>, signal?: AbortSignal): Promise<T> {
+		if (signal?.aborted) throw new RequestCancelledError();
+		if (this.active >= this.limit) {
+			await new Promise<void>((resolve, reject) => {
+				const wake = (): void => {
+					signal?.removeEventListener('abort', cancel);
+					resolve();
+				};
+				const cancel = (): void => {
+					const i = this.waiters.indexOf(wake);
+					if (i >= 0) this.waiters.splice(i, 1);
+					reject(new RequestCancelledError());
+				};
+				this.waiters.push(wake);
+				signal?.addEventListener('abort', cancel, { once: true });
+			});
+		}
 		this.active++;
 		try {
+			if (signal?.aborted) throw new RequestCancelledError();
 			return await fn();
 		} finally {
 			this.active--;
@@ -296,16 +332,25 @@ export class AnswerService {
 		};
 	}
 
-	/** Search, then (if possible) one grounded generation call over that project's excerpts. */
-	async explain(projectId: unknown, rawQuestion: unknown, client: string, snapshotId?: unknown): Promise<ExplainResponse> {
+	/**
+	 * Search, then (if possible) one grounded generation call over that project's
+	 * excerpts. `signal` (the HTTP client's connection) cancels the request: a
+	 * queued call is dropped before it reaches the provider and its limiter slot
+	 * is given back. Aborting a call already sent only stops waiting for it — the
+	 * provider may still bill it.
+	 */
+	async explain(projectId: unknown, rawQuestion: unknown, client: string, snapshotId?: unknown, signal?: AbortSignal): Promise<ExplainResponse> {
 		const found = await this.search(projectId, rawQuestion, snapshotId);
+		if (signal?.aborted) throw new RequestCancelledError();
 		const p = this.state(projectId);
 		const base: ExplainResponse = { ...found, mode: 'fallback', message: FALLBACK_MESSAGE, reason: null, claims: [], model: null, cached: false, usage: null, context: null };
 		if (found.hits.length === 0) return { ...base, mode: 'insufficient', message: INSUFFICIENT_MESSAGE };
 		const provider = this.options.generation;
 		if (!provider) return { ...base, reason: 'not_configured' };
 
-		const key = sha256Hex(canonicalJson([PROMPT_VERSION, p.served.project_id, p.served.snapshot_id, p.served.index_id, provider.model, found.question.replace(/\s+/g, ' ').toLowerCase()]));
+		// Exact question text (only outer whitespace is trimmed, as for search): case and inner
+		// whitespace change meaning in identifiers and string literals.
+		const key = sha256Hex(canonicalJson([PROMPT_VERSION, p.served.project_id, p.served.snapshot_id, p.served.index_id, provider.model, found.question]));
 		const hit = this.cache.get(key);
 		if (hit) {
 			this.cache.delete(key);
@@ -320,11 +365,24 @@ export class AnswerService {
 		const input = `Project: ${p.served.name} (${p.served.project_id})\nQuestion: ${found.question}\n\nExcerpts:\n\n${excerpts.map(renderExcerpt).join('\n\n')}`;
 		const context = { excerpts: excerpts.length, dropped, chars };
 		let result;
+		let started = false;
 		try {
-			result = await this.gate.run(() =>
-				provider.generate({ instructions: INSTRUCTIONS, input, schema: CITED_SCHEMA as unknown as Record<string, unknown>, schemaName: 'cited_answer', maxOutputTokens: this.options.limits.maxOutputTokens }),
-			);
+			result = await this.gate.run(() => {
+				started = true;
+				return provider.generate({
+					instructions: INSTRUCTIONS,
+					input,
+					schema: CITED_SCHEMA as unknown as Record<string, unknown>,
+					schemaName: 'cited_answer',
+					maxOutputTokens: this.options.limits.maxOutputTokens,
+					...(signal ? { signal } : {}),
+				});
+			}, signal);
 		} catch (err) {
+			if (err instanceof RequestCancelledError || signal?.aborted) {
+				if (!started) this.limiter.refund(client);
+				throw new RequestCancelledError();
+			}
 			return { ...base, reason: err instanceof GenerationError ? err.kind : 'provider', context };
 		}
 		const usage = result.usage;

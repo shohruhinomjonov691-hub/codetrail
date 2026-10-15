@@ -299,8 +299,9 @@ describe('cost controls', () => {
 		reply = () => completed({ status: 'insufficient_evidence', claims: [] });
 		const s = service();
 		try {
-			const first = await s.explain('alpha', 'Request   timeout?', 'c1');
-			const second = await s.explain('alpha', 'request timeout?', 'c2');
+			// The key is the exact question (only outer whitespace trimmed); see explain-review-regressions.
+			const first = await s.explain('alpha', 'request timeout?', 'c1');
+			const second = await s.explain('alpha', '  request timeout?  ', 'c2');
 			await s.explain('beta', 'request timeout?', 'c1');
 			expect(first.cached).toBe(false);
 			expect(second.cached).toBe(true);

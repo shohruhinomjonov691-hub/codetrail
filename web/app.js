@@ -1,4 +1,5 @@
 import { renderCode } from './highlight.js';
+import { errorKeys } from './errors.js';
 import { DEFAULT_LANG, DICT, LANGS } from './i18n.js';
 
 const LANG_KEY = 'codetrail.lang';
@@ -66,15 +67,17 @@ function renderChips() {
 	const box = $('chips');
 	box.replaceChildren(
 		...t('examples.items').map((q) => {
+			// A native button inside a list item: announced as a button, grouped as a list.
+			const item = el('li');
 			const chip = el('button', 'chip', q);
 			chip.type = 'button';
-			chip.setAttribute('role', 'listitem');
 			// Fills the question only — never searches or calls the AI by itself.
 			chip.addEventListener('click', () => {
 				$('question').value = q;
 				$('question').focus();
 			});
-			return chip;
+			item.append(chip);
+			return item;
 		}),
 	);
 }
@@ -171,7 +174,7 @@ function renderView() {
 	document.body.classList.toggle('has-results', v.kind !== 'idle');
 	const res = v.res;
 	if (v.kind === 'loading') status.append(notice('loading', t(v.explain ? 'status.explaining' : 'status.searching')));
-	else if (v.kind === 'error') status.append(notice('error', t(v.titleKey), v.bodyKey ? t(v.bodyKey) : v.body));
+	else if (v.kind === 'error') status.append(notice('error', t(v.titleKey), v.bodyKey ? t(v.bodyKey) : undefined));
 	else if (v.kind === 'result') {
 		if (res.hits.length === 0 && res.mode !== 'insufficient') status.append(notice('info', t('status.empty.title'), t('status.empty.body')));
 		else if (res.mode === 'insufficient') status.append(notice('info', t('status.insufficient.title'), t('status.insufficient.body')));
@@ -199,7 +202,8 @@ async function call(path, body) {
 	} catch {
 		data = null;
 	}
-	if (!res.ok) throw Object.assign(new Error(data?.error?.message ?? `HTTP ${res.status}`), { code: data?.error?.code ?? `HTTP_${res.status}` });
+	// Only the error code is kept; the server's text is never shown (it is not translated).
+	if (!res.ok) throw Object.assign(new Error('request failed'), { code: data?.error?.code ?? `HTTP_${res.status}` });
 	return data;
 }
 
@@ -222,12 +226,7 @@ async function run(kind) {
 		const res = await call(kind === 'explain' ? '/api/explain' : '/api/search', { question, language: state.lang });
 		state.view = { kind: 'result', res };
 	} catch (err) {
-		state.view =
-			err.code === 'SEARCH_UNAVAILABLE'
-				? { kind: 'error', titleKey: 'error.search.title', bodyKey: 'error.search.body' }
-				: err.code === 'NETWORK'
-					? { kind: 'error', titleKey: 'error.request.title', bodyKey: 'error.network' }
-					: { kind: 'error', titleKey: 'error.request.title', body: err.message };
+		state.view = { kind: 'error', ...errorKeys(err.code) };
 	} finally {
 		state.busy = false;
 		updateButtons();

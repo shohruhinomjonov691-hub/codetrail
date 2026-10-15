@@ -129,7 +129,8 @@ textarea:disabled { opacity: 0.6; }
 .ai-off-note { margin: 0; font-size: 13px; color: var(--muted); }
 
 .examples { display: grid; gap: 8px; }
-.chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.chips { display: flex; flex-wrap: wrap; gap: 8px; list-style: none; margin: 0; padding: 0; }
+.chips li { display: flex; max-width: 100%; }
 .chip {
 	font: 14px/1.4 var(--sans);
 	text-align: left;

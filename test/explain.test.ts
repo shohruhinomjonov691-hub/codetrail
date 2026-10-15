@@ -413,7 +413,7 @@ describe('HTTP API (internal, unpinned module) and UI bundle', () => {
 		expect(page.status).toBe(200);
 		expect(page.headers.get('content-security-policy')).toContain("script-src 'self'");
 		expect(await page.text()).toContain('data-i18n="action.explain"');
-		for (const p of ['/app.js', '/highlight.js', '/i18n.js', '/style.css']) expect((await fetch(`${base}${p}`)).status).toBe(200);
+		for (const p of ['/app.js', '/highlight.js', '/i18n.js', '/errors.js', '/style.css']) expect((await fetch(`${base}${p}`)).status).toBe(200);
 		for (const p of ['/../package.json', '/web/app.js', '/.env', '/src/cli.ts']) expect((await fetch(`${base}${p}`)).status).toBe(404);
 	});
 
@@ -608,9 +608,43 @@ describe('answer language (en | ko)', () => {
 		const app = readFileSync(join(web, 'app.js'), 'utf8');
 		for (const m of app.matchAll(/\bt\('([a-zA-Z_.]+)'/g)) expect(DICT.en).toHaveProperty([m[1]!]);
 		// the chip handler sets the field and focuses it; it does not search
-		const chip = app.slice(app.indexOf("chip.addEventListener('click'"), app.indexOf('return chip;'));
+		const chip = app.slice(app.indexOf("chip.addEventListener('click'"), app.indexOf('item.append(chip);'));
+		expect(chip.length).toBeGreaterThan(0);
 		expect(chip).toContain("$('question').value = q;");
 		expect(chip).not.toMatch(/run\(|fetch\(/);
 		expect(app).toContain("localStorage.setItem(LANG_KEY, lang)");
+	});
+});
+
+describe('UI review fixes: chip semantics and translated API errors', () => {
+	const web = join(import.meta.dirname, '..', 'web');
+	const app = () => readFileSync(join(web, 'app.js'), 'utf8');
+
+	it('example chips are native buttons inside list items (no role override)', () => {
+		const html = readFileSync(join(web, 'index.html'), 'utf8');
+		expect(html).toMatch(/<ul class="chips" id="chips"/);
+		expect(app()).not.toMatch(/role['"]?\s*,\s*['"]listitem/);
+		const chips = app().slice(app().indexOf('function renderChips'), app().indexOf('function renderAi'));
+		expect(chips).toContain("el('li')");
+		expect(chips).toContain("el('button', 'chip', q)");
+		expect(chips).not.toMatch(/setAttribute\('role'/);
+	});
+
+	it('API errors are shown from the dictionary only; raw server text never reaches the page', async () => {
+		const { errorKeys, KNOWN_ERROR_CODES } = (await import(join(web, 'errors.js'))) as { errorKeys: (c: string) => { titleKey: string; bodyKey: string }; KNOWN_ERROR_CODES: string[] };
+		const { DICT } = (await import(join(web, 'i18n.js'))) as { DICT: Record<string, Record<string, unknown>> };
+		for (const code of [...KNOWN_ERROR_CODES, 'INTERNAL', 'HTTP_500', 'HTTP_502', 'SOMETHING_NEW', '']) {
+			const keys = errorKeys(code);
+			for (const lang of ['en', 'ko']) {
+				expect(DICT[lang]).toHaveProperty([keys.titleKey]);
+				expect(DICT[lang]).toHaveProperty([keys.bodyKey]);
+			}
+		}
+		expect(errorKeys('INTERNAL')).toEqual({ titleKey: 'error.request.title', bodyKey: 'error.generic' });
+		expect(errorKeys('HTTP_500')).toEqual(errorKeys('INTERNAL'));
+		expect(errorKeys('NETWORK').bodyKey).toBe('error.network');
+		expect(errorKeys('SEARCH_UNAVAILABLE').bodyKey).toBe('error.search.body');
+		expect(errorKeys('toString').bodyKey).toBe('error.generic'); // no prototype lookups
+		expect(app()).not.toMatch(/err\.message|error\?\.message/);
 	});
 });

@@ -66,6 +66,8 @@ export const DICT = {
 		'error.network': 'Could not reach the server. Reload the page and try again.',
 		'error.noProject': 'The project is not available. The server configuration needs to be checked.',
 		'error.emptyQuestion': 'Please enter a question.',
+		'error.badRequest': 'The question could not be processed. Please shorten or rephrase it.',
+		'error.generic': 'Something went wrong on the server. Please try again shortly.',
 	},
 	ko: {
 		'lang.label': '언어',
@@ -129,5 +131,7 @@ export const DICT = {
 		'error.network': '서버에 연결할 수 없습니다. 페이지를 새로 고친 뒤 다시 시도하세요.',
 		'error.noProject': '프로젝트를 사용할 수 없습니다. 서버 설정을 확인해야 합니다.',
 		'error.emptyQuestion': '질문을 입력하세요.',
+		'error.badRequest': '질문을 처리할 수 없습니다. 더 짧게 줄이거나 다르게 표현해 주세요.',
+		'error.generic': '서버에서 문제가 발생했습니다. 잠시 후 다시 시도하세요.',
 	},
 };

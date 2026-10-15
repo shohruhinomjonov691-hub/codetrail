@@ -12,7 +12,7 @@ CodeTrail is a codebase RAG for TypeScript/JavaScript projects. The goal is to a
 - an HTTP API with a developer UI;
 - AI explanations generated through the OpenAI API, with citations built and checked by the server.
 
-The OpenAI integration has been tested **only against a mock provider**; no real API request has been made yet. The public server is pinned to the GoTrip frontend + backend snapshot. Not done yet: Docker and deployment. On the tuning questions, retrieval misses the 0.80 Recall@8 target for GoTrip (0.656; see below).
+The OpenAI integration is tested against a mock provider. On 2026-10-15 **one** real request was made: GoTrip tuning question T4, model `gpt-6-luna`. It returned a valid two-claim answer whose citations matched the code; usage was 3228 input and 134 output tokens, about $0.0004 at list price. That single result is not a quality guarantee. The public server is pinned to the GoTrip frontend + backend snapshot. Not done yet: Docker and deployment. On the tuning questions, retrieval misses the 0.80 Recall@8 target for GoTrip (0.656; see below).
 
 **Where data goes.**
 

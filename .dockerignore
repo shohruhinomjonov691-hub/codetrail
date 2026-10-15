@@ -17,3 +17,10 @@ models
 .env.*
 !.env.example
 dist-test
+# exported serve data, experiments, tests and reports are not part of the image
+deploy-data
+experiments
+eval
+test
+*.md
+!README.md

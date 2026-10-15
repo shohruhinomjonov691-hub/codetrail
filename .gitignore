@@ -28,3 +28,5 @@ models/
 .vscode/
 .idea/
 dist-test/
+# exported serve data (scripts/export-serve-data.mjs)
+deploy-data/

@@ -13,6 +13,11 @@
         "sha256": "a39c5a9c4bbb5b989ed9274300629d5feb5920e52c3257a8e615f3868db44f35",
         "size": 12116141
       },
+      "ubuntu-arm64": {
+        "url": "https://github.com/ggml-org/llama.cpp/releases/download/b11606/llama-b11606-bin-ubuntu-arm64.tar.gz",
+        "sha256": "328e338bcb726bc47fe94adbce89e7b1a38867ba00b04ee3fb59e1f58f549845",
+        "size": 13842023
+      },
       "ubuntu-x64": {
         "url": "https://github.com/ggml-org/llama.cpp/releases/download/b11606/llama-b11606-bin-ubuntu-x64.tar.gz",
         "sha256": "d7619f6f3d8d1f6c63641c0904abff560e9dfa8ec0bd5a57e36f424ac96fac55",

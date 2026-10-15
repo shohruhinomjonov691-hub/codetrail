@@ -1,0 +1,112 @@
+# CodeTrail public demo: HTTP API + UI (codetrail) and the local embedding server (llama-embed).
+# Generation goes to the OpenAI API; no generation model runs here.
+#
+# Required on the host:
+#   CODETRAIL_MODELS_HOST_DIR  directory with models/Qwen3-Embedding-0.6B-Q8_0.gguf (scripts/fetch-models.mjs)
+#   CODETRAIL_DATA_HOST_DIR    exported serve data (scripts/export-serve-data.mjs) — mounted read-only
+#   runtime env file (default ./.env): CODETRAIL_OPENAI_API_KEY, CODETRAIL_PUBLIC_PIN
+# Optional: CODETRAIL_HTTP_PORT (default 8080, bound to 127.0.0.1 only), CODETRAIL_TRUST_PROXY=1 behind a reverse proxy,
+#           CODETRAIL_ENV_FILE (another runtime env file), CODETRAIL_IMAGE_TAG.
+name: codetrail
+
+x-hardening: &hardening
+  read_only: true
+  tmpfs: [/tmp]
+  cap_drop: [ALL]
+  security_opt: ["no-new-privileges:true"]
+  restart: unless-stopped
+  logging:
+    driver: json-file
+    options: { max-size: "10m", max-file: "3" }
+
+services:
+  llama-embed:
+    <<: *hardening
+    build: { context: ., dockerfile: docker/embed.Dockerfile }
+    image: codetrail-embed:b11606
+    # Same flags as models.lock.json runtime.serverArgs, bound to the container network.
+    command: ["-m", "/models/models/Qwen3-Embedding-0.6B-Q8_0.gguf", "--embedding", "--pooling", "last", "-c", "8192", "-np", "2",
+      "-b", "4096", "-ub", "4096", "--cache-ram", "0", "--host", "0.0.0.0", "--port", "8081", "--no-webui"]
+    volumes:
+      - "${CODETRAIL_MODELS_HOST_DIR:?set CODETRAIL_MODELS_HOST_DIR}:/models:ro"
+    networks: [internal]
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8081/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 20s
+    deploy:
+      resources:
+        limits: { memory: 2048M, cpus: "2.0" }
+
+  codetrail:
+    <<: *hardening
+    build: { context: . }
+    image: "codetrail:${CODETRAIL_IMAGE_TAG:-local}"
+    depends_on:
+      llama-embed: { condition: service_healthy }
+    env_file:
+      - path: "${CODETRAIL_ENV_FILE:-.env}"
+        required: true
+    environment:
+      CODETRAIL_DATA_DIR: /data
+      CODETRAIL_EMBED_URL: http://llama-embed:8081
+      CODETRAIL_PROVIDER_HOSTS: llama-embed
+      # Identical path in both containers: the embedding identity check compares realpaths.
+      CODETRAIL_EMBED_MODEL_FILE: /models/models/Qwen3-Embedding-0.6B-Q8_0.gguf
+      CODETRAIL_TRUST_PROXY: "${CODETRAIL_TRUST_PROXY:-0}"
+    volumes:
+      - "${CODETRAIL_MODELS_HOST_DIR:?set CODETRAIL_MODELS_HOST_DIR}:/models:ro"
+      - "${CODETRAIL_DATA_HOST_DIR:?set CODETRAIL_DATA_HOST_DIR}:/data:ro"
+    ports:
+      - "127.0.0.1:${CODETRAIL_HTTP_PORT:-8080}:8080"
+    networks: [internal, egress]
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:8080/api/projects').then((r)=>process.exit(r.ok?0:1),()=>process.exit(1))"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    deploy:
+      resources:
+        limits: { memory: 512M, cpus: "1.0" }
+
+  # One-off: builds the pinned snapshot's index with THIS stack's embedding server (the index
+  # fingerprint must come from the serving platform). Needs the data directory writable.
+  #   docker compose --profile index run --rm codetrail-index
+  codetrail-index:
+    profiles: [index]
+    image: "codetrail:${CODETRAIL_IMAGE_TAG:-local}"
+    read_only: true
+    tmpfs: [/tmp]
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    depends_on:
+      llama-embed: { condition: service_healthy }
+    env_file:
+      - path: "${CODETRAIL_ENV_FILE:-.env}"
+        required: true
+    environment:
+      CODETRAIL_DATA_DIR: /data
+      CODETRAIL_EMBED_URL: http://llama-embed:8081
+      CODETRAIL_PROVIDER_HOSTS: llama-embed
+      CODETRAIL_EMBED_MODEL_FILE: /models/models/Qwen3-Embedding-0.6B-Q8_0.gguf
+      # 2-CPU container: one input per request and a long per-request timeout. Measured on the
+      # development Mac's Docker: the two largest GoTrip chunks (3008 + 2984 tokens) took 121.5 s on the
+      # two slots, so one large input per slot ≈ 121 s; 300 s leaves ≈ 2.5× headroom. Queries are unaffected.
+      CODETRAIL_EMBED_BATCH_SIZE: "${CODETRAIL_EMBED_BATCH_SIZE:-1}"
+      CODETRAIL_EMBED_DOC_TIMEOUT_MS: "${CODETRAIL_EMBED_DOC_TIMEOUT_MS:-300000}"
+    entrypoint: ["sh", "-c", 'exec node dist/cli.js index "$${CODETRAIL_PUBLIC_PIN%%:*}" "$${CODETRAIL_PUBLIC_PIN#*:}"']
+    volumes:
+      - "${CODETRAIL_MODELS_HOST_DIR:?set CODETRAIL_MODELS_HOST_DIR}:/models:ro"
+      - "${CODETRAIL_DATA_HOST_DIR:?set CODETRAIL_DATA_HOST_DIR}:/data:rw"
+    networks: [internal]
+    deploy:
+      resources:
+        limits: { memory: 1024M, cpus: "1.0" }
+
+networks:
+  # llama-embed and codetrail-index have no route out; codetrail also joins `egress` for the OpenAI API.
+  internal: { internal: true }
+  egress: {}

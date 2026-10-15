@@ -12,7 +12,7 @@ CodeTrail is a codebase RAG for TypeScript/JavaScript projects. The goal is to a
 - an HTTP API with a developer UI;
 - AI explanations generated through the OpenAI API, with citations built and checked by the server.
 
-The OpenAI integration is tested against a mock provider. On 2026-10-15 **one** real request was made: GoTrip tuning question T4, model `gpt-6-luna`. It returned a valid two-claim answer whose citations matched the code; usage was 3228 input and 134 output tokens, about $0.0004 at list price. That single result is not a quality guarantee. The public server is pinned to the GoTrip frontend + backend snapshot. Not done yet: Docker and deployment. On the tuning questions, retrieval misses the 0.80 Recall@8 target for GoTrip (0.656; see below).
+The OpenAI integration is tested against a mock provider. On 2026-10-15 **one** real request was made: GoTrip tuning question T4, model `gpt-6-luna`. It returned a valid two-claim answer whose citations matched the code; usage was 3228 input and 134 output tokens, about $0.0004 at list price. That single result is not a quality guarantee. The public server is pinned to the GoTrip frontend + backend snapshot. Docker files (CodeTrail + local embedding server) are ready and checked in local Docker; nothing is deployed to a server yet (see `DEPLOY.md`). On the tuning questions, retrieval misses the 0.80 Recall@8 target for GoTrip (0.656; see below).
 
 **Where data goes.**
 
@@ -264,6 +264,25 @@ npm run cli -- explain gotrip "Where does AuthGuard get the token from and how i
     - Search itself is language-neutral. Korean questions can rank GoTrip's Korean locale files first (lexical match); English questions currently retrieve code better.
 - **Not included:** web search, automatic code edits, pull requests and shell execution.
 - **Local generation experiments (archived).** D0, D0b and D0c with Qwen2.5-Coder 1.5B/7B: the 1.5B model gave 0/13 and 0/10 strictly grounded answers, and the 7B run was stopped by the memory guard on the development Mac. The scripts are in `experiments/local-generation/` and the reports in `eval/reports/2026-10-15-d0*`.
+
+## Docker
+
+`compose.yaml` runs two containers. A generation model is not needed; answers come from the OpenAI API.
+
+| Container | Contents | Network | Limits |
+| --- | --- | --- | --- |
+| `llama-embed` | llama.cpp b11606 built from the SHA-256-verified release archive (`docker/embed.Dockerfile`) | internal only | 2 GiB, 2 CPUs |
+| `codetrail` | API + UI (`Dockerfile`) | internal + egress for OpenAI | 512 MiB, 1 CPU |
+
+- **Mounts.** Both containers mount the embedding model read-only at the same path, `/models`, so the cross-container identity check holds: the model path, the runtime build and the model SHA-256 must all match.
+- **Data.** The server reads `/data` read-only. That directory is produced by `scripts/export-serve-data.mjs`: one registry entry and one snapshot.
+- **Index.** The index is built **on the serving platform** with `docker compose --profile index run --rm codetrail-index`.
+  - Why: an index built on the Mac (Metal) fails the 0.9999 embedding fingerprint check against the Linux CPU runtime (measured cosine 0.999705). That check is intended to fail closed.
+  - Batching: the index job sends one input per request with a 300 s per-request timeout (`CODETRAIL_EMBED_BATCH_SIZE`, `CODETRAIL_EMBED_DOC_TIMEOUT_MS`; defaults outside Docker stay 8 and 120 s; the query timeout is fixed). Measured in local Docker (2 CPUs, arm64): the two largest GoTrip chunks (3008 + 2984 tokens) took 121.5 s, so the old 120 s timeout with 8-input requests failed a first run.
+  - Resumable: vectors are validated and cached in groups of 32 while indexing, so an interrupted build keeps its progress and a rerun computes only what is missing.
+- **Secrets.** The key comes only from the runtime env file (`CODETRAIL_ENV_FILE`, default `.env`). Images contain no `.env`, data or weights.
+- **Exposure.** The app port is published on `127.0.0.1` only.
+- **Operations.** Deploy, update and rollback steps are in `DEPLOY.md`.
 
 ## Support boundaries
 

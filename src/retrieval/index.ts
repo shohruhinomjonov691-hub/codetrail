@@ -20,6 +20,8 @@ import { splitIdentifiers } from './text.js';
  * on load. Older indexes are rejected with INDEX_OUTDATED.
  */
 export const INDEX_SCHEMA = 3;
+/** Missing document vectors are computed and cached in groups of this size. */
+export const INDEX_CACHE_GROUP = 32;
 
 export interface IndexMeta {
 	schema: number;
@@ -161,18 +163,21 @@ export async function buildIndex(
 			if (hit) vectors.set(hit, i * recipe.dims);
 			else missing.push(i);
 		});
-		if (missing.length > 0) {
+		// Computed in groups; each validated group is cached right away, so an interrupted build
+		// (timeout, crash) keeps its progress and a rerun only computes what is still missing.
+		for (let g = 0; g < missing.length; g += INDEX_CACHE_GROUP) {
+			const part = missing.slice(g, g + INDEX_CACHE_GROUP);
 			let computed: Float32Array[];
 			try {
-				computed = await provider.embed(missing.map((i) => inputs[i] as string), 'document');
-				if (computed.length !== missing.length) throw new CodeTrailError('PROVIDER_FAILED', 'Embedding provider returned a wrong number of vectors');
-				computed.forEach((v, j) => assertExactUnitVector(v, recipe.dims, `Document embedding for chunk ${chunks[missing[j] as number]?.id ?? j}`));
+				computed = await provider.embed(part.map((i) => inputs[i] as string), 'document');
+				if (computed.length !== part.length) throw new CodeTrailError('PROVIDER_FAILED', 'Embedding provider returned a wrong number of vectors');
+				computed.forEach((v, j) => assertExactUnitVector(v, recipe.dims, `Document embedding for chunk ${chunks[part[j] as number]?.id ?? j}`));
 			} catch (err) {
 				cache.close();
 				throw err;
 			}
-			computed.forEach((v, j) => vectors.set(v, (missing[j] as number) * recipe.dims));
-			cache.putMany(computed.map((v, j) => ({ input: inputs[missing[j] as number] as string, vector: v })));
+			computed.forEach((v, j) => vectors.set(v, (part[j] as number) * recipe.dims));
+			cache.putMany(computed.map((v, j) => ({ input: inputs[part[j] as number] as string, vector: v })));
 		}
 		const invalidCache = cache.invalidReads;
 		const cacheReusable = cache.reusable;

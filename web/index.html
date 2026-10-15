@@ -1,40 +1,64 @@
 <!doctype html>
-<html lang="uz">
+<html lang="en">
 <head>
 	<meta charset="utf-8">
 	<meta name="viewport" content="width=device-width, initial-scale=1">
-	<title>CodeTrail</title>
+	<meta name="color-scheme" content="dark">
+	<title>CodeTrail · GoTrip</title>
 	<link rel="icon" href="data:,">
 	<link rel="stylesheet" href="/style.css">
 	<script type="module" src="/app.js"></script>
 </head>
 <body>
-	<header class="top">
-		<div class="brand"><span class="logo" aria-hidden="true">⌥</span> CodeTrail</div>
-		<div class="ai-badge" id="ai-badge" hidden></div>
+	<header class="topbar">
+		<div class="brand"><span class="brand-mark" aria-hidden="true">⌥</span><span>CodeTrail</span></div>
+		<div class="topbar-right">
+			<span class="pill project-pill"><span class="pill-label" data-i18n="project.label"></span><strong id="project-name">GoTrip</strong></span>
+			<span class="pill ai-pill" id="ai-pill" hidden></span>
+			<div class="lang-switch" role="group" data-i18n-aria="lang.label">
+				<button type="button" class="lang-btn" data-lang="en" lang="en">EN</button>
+				<button type="button" class="lang-btn" data-lang="ko" lang="ko">KO</button>
+			</div>
+		</div>
 	</header>
-	<main class="layout">
-		<form class="ask" id="ask" autocomplete="off">
-			<div class="project-card">
-				<span class="field-label">Loyiha</span>
-				<strong id="project-name">—</strong>
-				<p class="project-meta" id="project-meta"></p>
+
+	<main class="page">
+		<section class="ask-panel" id="ask-panel">
+			<div class="hero-text">
+				<h1 data-i18n="hero.title"></h1>
+				<p class="subtitle" data-i18n="hero.subtitle"></p>
 			</div>
-			<label class="field">
-				<span>Savol</span>
-				<textarea id="question" rows="3" maxlength="1000" required placeholder="Masalan: Request timeout qanday ishlaydi?"></textarea>
-			</label>
-			<div class="actions">
-				<button type="submit" id="search-btn" class="secondary">Qidirish</button>
-				<button type="button" id="explain-btn" class="primary">AI bilan tushuntirish</button>
+			<form id="ask" autocomplete="off" novalidate>
+				<label class="field-label" for="question" data-i18n="question.label"></label>
+				<textarea id="question" rows="3" maxlength="1000" data-i18n-placeholder="question.placeholder" aria-describedby="question-hint"></textarea>
+				<div class="ask-row">
+					<p class="hint" id="question-hint" data-i18n="question.hint"></p>
+					<div class="actions">
+						<button type="submit" id="search-btn" class="btn btn-secondary" data-i18n="action.search"></button>
+						<button type="button" id="explain-btn" class="btn btn-primary" data-i18n="action.explain" aria-describedby="ai-off-note"></button>
+					</div>
+				</div>
+				<p class="ai-off-note" id="ai-off-note" hidden data-i18n="action.explainDisabled"></p>
+			</form>
+			<div class="examples" id="examples">
+				<p class="field-label" id="examples-label" data-i18n="examples.label"></p>
+				<div class="chips" id="chips" role="list" aria-labelledby="examples-label"></div>
 			</div>
-			<p class="hint">Qidiruv faqat shu loyihaning qayd etilgan snapshot’ida lokal bajariladi. AI faqat “AI bilan tushuntirish” bosilganda chaqiriladi va faqat shu loyiha kodiga tayanadi.</p>
-		</form>
-		<section class="results" aria-live="polite">
+			<p class="note" data-i18n="note.privacy"></p>
+			<details class="source-details" id="source-details">
+				<summary data-i18n="details.summary"></summary>
+				<dl id="details-list"></dl>
+			</details>
+		</section>
+
+		<section class="results" id="results" aria-live="polite">
 			<div id="status"></div>
-			<section id="answer" hidden></section>
+			<section id="answer" class="answer" hidden></section>
 			<section id="sources" hidden>
-				<h2 class="section-title">Kod manbalari</h2>
+				<div class="section-head">
+					<h2 data-i18n="sources.title"></h2>
+					<span class="muted" id="sources-count"></span>
+				</div>
 				<div id="source-list"></div>
 			</section>
 		</section>

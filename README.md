@@ -220,7 +220,7 @@ npm run cli -- explain gotrip "Where does AuthGuard get the token from and how i
 ```
 
 - **The public server is pinned to one project and snapshot.** `serve` needs `CODETRAIL_PUBLIC_PIN=<project>:<snapshot>` (the public demo: `gotrip:d75aaec9…`, the GoTrip frontend + backend snapshot) and refuses to start without it, or if that snapshot has no usable index. The UI shows that project only: there is no project picker and no way to upload or connect a repository. Projects and snapshots are created by the operator with the CLI (`project add`, `source add-*`, `snapshot create`, `index`); the internal modules stay multi-project (the operator CLI `explain <project>` can address any indexed project).
-- **Requests.** `POST /api/search` and `POST /api/explain` take `{question}`; `project_id`/`snapshot_id` may be omitted and are then the pinned ones, any other value is refused with 403 (`PROJECT_NOT_ALLOWED` / `SNAPSHOT_NOT_ALLOWED`). Retrieval reads only the pinned project's index and the model only receives its excerpts.
+- **Requests.** `POST /api/search` and `POST /api/explain` take `{question, language?}` (`language`: `en` | `ko`, default `en`); `project_id`/`snapshot_id` may be omitted and are then the pinned ones, any other value is refused with 403 (`PROJECT_NOT_ALLOWED` / `SNAPSHOT_NOT_ALLOWED`). Retrieval reads only the pinned project's index and the model only receives its excerpts.
 - **Search (`/api/search`)** returns the top 8 hybrid hits with `source@commit:path:Lx-Ly`, role and the exact chunk text from the snapshot. It never calls the model.
 - **AI explanation (`/api/explain`)** runs the same search and builds compact, line-numbered excerpts (at most `CODETRAIL_AI_MAX_CONTEXT_CHARS`, default 12 000). It then makes **one** OpenAI call with a strict JSON schema: `{status, claims[{text, source_id, lines}]}`.
   - The model names only an excerpt and a line range. The server copies the cited code, commit and path from the snapshot.
@@ -251,11 +251,17 @@ npm run cli -- explain gotrip "Where does AuthGuard get the token from and how i
   - CodeTrail calls only `POST /v1/responses`, so a restricted key with just the Responses API write permission is sufficient.
   - It is never written to responses or logs. Provider error messages are not echoed.
   - Logs record route, status, duration and mode/reason only: no question, prompt, code or key.
-- **UI** (`web/`, no framework and no external assets, strict CSP):
-  - the pinned project's name and snapshot (no picker); "Qidirish" for local search only and "AI bilan tushuntirish" for an explanation;
-  - claim cards with server-quoted code; source cards with syntax-highlighted, line-numbered code;
-  - loading, empty, insufficient-evidence, fallback and search-error states;
-  - layout for desktop and mobile.
+- **UI** (`web/`, no framework, no external assets, strict CSP, dark theme):
+  - **Start screen.** "Explore the GoTrip codebase", a large question field, "Search code" (local only) and "Explain with AI".
+  - **Example chips.** Four example questions taken from the GoTrip tuning set, whose evidence exists in the code. A chip only fills the field; it never searches or calls the AI.
+  - **Results.** Once results appear, the question panel becomes compact and the answer and sources use the full width. Claim cards show server-quoted code; source cards show syntax-highlighted code with line numbers. Snapshot, commits and chunk count are in a collapsible "Source details".
+  - **AI status.** When AI is off, the header says so and "Explain with AI" is disabled; local search still works.
+  - **States.** Loading, empty, insufficient-evidence, fallback and search-error states are shown; keyboard focus is visible; text contrast meets WCAG AA. Long paths and symbols wrap instead of overflowing, on desktop and at 375 px.
+  - **Languages: English and 한국어** (EN / KO switch, default English, remembered in `localStorage`).
+    - Every UI string, status, error, placeholder and example comes from one dictionary (`web/i18n.js`, identical keys).
+    - The AI is asked to answer in the selected language; code, identifiers, paths and cited code are not translated.
+    - The API accepts `language` only as `en` or `ko` (anything else is 400). The language is part of the answer-cache key.
+    - Search itself is language-neutral. Korean questions can rank GoTrip's Korean locale files first (lexical match); English questions currently retrieve code better.
 - **Not included:** web search, automatic code edits, pull requests and shell execution.
 - **Local generation experiments (archived).** D0, D0b and D0c with Qwen2.5-Coder 1.5B/7B: the 1.5B model gave 0/13 and 0/10 strictly grounded answers, and the 7B run was stopped by the memory guard on the development Mac. The scripts are in `experiments/local-generation/` and the reports in `eval/reports/2026-10-15-d0*`.
 

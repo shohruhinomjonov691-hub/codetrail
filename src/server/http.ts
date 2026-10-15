@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
 import { fileURLToPath } from 'node:url';
-import { AnswerService, RequestCancelledError, SearchUnavailableError } from '../answer/service.js';
+import { AnswerService, parseLanguage, RequestCancelledError, SearchUnavailableError } from '../answer/service.js';
 import { CodeTrailError } from '../errors.js';
 import { assertId, assertSnapshotId } from '../ids.js';
 
@@ -10,6 +10,7 @@ const STATIC: Record<string, { file: string; type: string }> = {
 	'/': { file: 'index.html', type: 'text/html; charset=utf-8' },
 	'/app.js': { file: 'app.js', type: 'text/javascript; charset=utf-8' },
 	'/highlight.js': { file: 'highlight.js', type: 'text/javascript; charset=utf-8' },
+	'/i18n.js': { file: 'i18n.js', type: 'text/javascript; charset=utf-8' },
 	'/style.css': { file: 'style.css', type: 'text/css; charset=utf-8' },
 };
 const SECURITY_HEADERS = {
@@ -91,7 +92,7 @@ function scope(body: Record<string, unknown>, pinned: PublicPin | undefined): { 
 
 function errorStatus(err: unknown): { status: number; code: string; message: string } {
 	if (err instanceof HttpError) return { status: err.status, code: err.code, message: err.message };
-	if (err instanceof SearchUnavailableError) return { status: 503, code: 'SEARCH_UNAVAILABLE', message: 'Lokal qidiruv hozir ishlamayapti.' };
+	if (err instanceof SearchUnavailableError) return { status: 503, code: 'SEARCH_UNAVAILABLE', message: 'Local search is unavailable.' };
 	if (err instanceof CodeTrailError) {
 		if (err.code === 'UNKNOWN_PROJECT' || err.code === 'UNKNOWN_SNAPSHOT') return { status: 404, code: err.code, message: err.message };
 		if (err.code === 'USAGE' || err.code === 'INVALID_QUERY') return { status: 400, code: err.code, message: err.message };
@@ -131,6 +132,7 @@ export function createHttpServer(service: AnswerService, options: ServerOptions 
 					if (req.method !== 'POST') throw new HttpError(405, 'METHOD_NOT_ALLOWED', 'Use POST');
 					const body = await readJson(req);
 					const target = scope(body, options.pinned);
+					const language = parseLanguage(body.language); // only "en" | "ko" (default "en")
 					if (path === '/api/search') {
 						send(res, 200, await service.search(target.project_id, body.question, target.snapshot_id));
 						return done(200);
@@ -142,7 +144,7 @@ export function createHttpServer(service: AnswerService, options: ServerOptions 
 					res.on('close', () => {
 						if (!res.writableEnded) cancel.abort();
 					});
-					const result = await service.explain(target.project_id, body.question, client, target.snapshot_id, cancel.signal);
+					const result = await service.explain(target.project_id, body.question, client, target.snapshot_id, cancel.signal, language);
 					note = `mode=${result.mode}${result.reason ? ` reason=${result.reason}` : ''}${result.cached ? ' cached' : ''}`;
 					send(res, 200, result);
 					return done(200);

@@ -11,7 +11,7 @@ import { createServer, type IncomingMessage, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { join } from 'node:path';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
-import { AnswerService, FALLBACK_MESSAGE, INSUFFICIENT_MESSAGE, type AnswerLimits, type ExplainResponse } from '../src/answer/service.js';
+import { AnswerService, FALLBACK_MESSAGE, INSUFFICIENT_MESSAGE, messagesFor, type AnswerLimits, type ExplainResponse } from '../src/answer/service.js';
 import type { RuntimeConfig } from '../src/config.js';
 import { LlamaCppEmbedding } from '../src/embedding/llamacpp.js';
 import { embeddingRecipeFromLock, type ModelsLock } from '../src/embedding/models.js';
@@ -412,8 +412,8 @@ describe('HTTP API (internal, unpinned module) and UI bundle', () => {
 		const page = await fetch(`${base}/`);
 		expect(page.status).toBe(200);
 		expect(page.headers.get('content-security-policy')).toContain("script-src 'self'");
-		expect(await page.text()).toContain('AI bilan tushuntirish');
-		for (const p of ['/app.js', '/highlight.js', '/style.css']) expect((await fetch(`${base}${p}`)).status).toBe(200);
+		expect(await page.text()).toContain('data-i18n="action.explain"');
+		for (const p of ['/app.js', '/highlight.js', '/i18n.js', '/style.css']) expect((await fetch(`${base}${p}`)).status).toBe(200);
 		for (const p of ['/../package.json', '/web/app.js', '/.env', '/src/cli.ts']) expect((await fetch(`${base}${p}`)).status).toBe(404);
 	});
 
@@ -435,8 +435,8 @@ describe('HTTP API (internal, unpinned module) and UI bundle', () => {
 		const app = readFileSync(join(web, 'app.js'), 'utf8');
 		expect(html).not.toMatch(/<select|type="file"|repo(sitory)? ?url/i);
 		expect(app).not.toContain('project_id');
-		// the only request payload is the question (snapshot_id is shown, never sent)
-		expect(app).toContain("'/api/search', { question })");
+		// the only request payload is the question and the answer language (snapshot_id is shown, never sent)
+		expect(app).toContain("{ question, language: state.lang }");
 		expect(app).not.toMatch(/snapshot_id\s*:/);
 	});
 
@@ -546,5 +546,71 @@ describe('public server pinned to one project and snapshot', () => {
 		for (const bad of [undefined, '', 'gotrip', 'gotrip:', ':d75aaec921284e35893092a7', 'gotrip:d75aaec9', 'Go Trip:d75aaec921284e35893092a7', 'gotrip:d75aaec921284e35893092a7:x']) {
 			expect(() => parsePublicPin(bad)).toThrow();
 		}
+	});
+});
+
+describe('answer language (en | ko)', () => {
+	it('is passed to the prompt, keyed into the cache and validated', async () => {
+		reply = () => completed({ status: 'insufficient_evidence', claims: [] });
+		const s = service();
+		try {
+			const en = await s.explain('alpha', 'request timeout', 'c1', undefined, undefined, 'en');
+			const ko = await s.explain('alpha', 'request timeout', 'c1', undefined, undefined, 'ko');
+			const koAgain = await s.explain('alpha', 'request timeout', 'c1', undefined, undefined, 'ko');
+			expect(requests).toHaveLength(2); // en and ko are different cache entries; the repeat is cached
+			expect(String(requests[0]!.body.input)).toContain('Answer language: English');
+			expect(String(requests[1]!.body.input)).toContain('Answer language: Korean');
+			expect(String(requests[0]!.body.instructions)).toMatch(/never translate code, identifiers, file paths/);
+			expect([en.cached, ko.cached, koAgain.cached]).toEqual([false, false, true]);
+			expect(en).toMatchObject({ language: 'en', message: INSUFFICIENT_MESSAGE });
+			expect(ko).toMatchObject({ language: 'ko', message: messagesFor('ko').insufficient });
+			await expect(s.explain('alpha', 'request timeout', 'c1', undefined, undefined, 'fr')).rejects.toMatchObject({ code: 'USAGE' });
+			expect(requests).toHaveLength(2);
+			// default is English
+			expect((await s.explain('alpha', 'request timeout', 'c1')).language).toBe('en');
+		} finally {
+			s.close();
+		}
+	});
+
+	it('fallback messages follow the language; HTTP accepts only en|ko', async () => {
+		const s = service({ generation: null });
+		const http = createHttpServer(s);
+		await new Promise<void>((resolve) => void http.listen(0, '127.0.0.1', () => resolve()));
+		const base = `http://127.0.0.1:${(http.address() as AddressInfo).port}`;
+		const post = (path: string, body: unknown) => fetch(`${base}${path}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+		try {
+			const ko = (await (await post('/api/explain', { project_id: 'alpha', question: 'request timeout', language: 'ko' })).json()) as ExplainResponse;
+			expect(ko).toMatchObject({ language: 'ko', mode: 'fallback', reason: 'not_configured', message: messagesFor('ko').fallback });
+			for (const bad of ['fr', 'EN', '', 1, null]) {
+				const r = await post('/api/explain', { project_id: 'alpha', question: 'request timeout', language: bad });
+				if (bad === null) expect(r.status).toBe(200); // null = default (en)
+				else expect(r.status).toBe(400);
+			}
+			expect((await post('/api/search', { project_id: 'alpha', question: 'request timeout', language: 'de' })).status).toBe(400);
+			expect((await post('/api/search', { project_id: 'alpha', question: 'request timeout', language: 'ko' })).status).toBe(200);
+		} finally {
+			await new Promise<void>((resolve) => void http.close(() => resolve()));
+			s.close();
+		}
+	});
+
+	it('UI text comes from one dictionary with identical en/ko keys; examples fill the field only', async () => {
+		const web = join(import.meta.dirname, '..', 'web');
+		const { DICT, LANGS, DEFAULT_LANG } = (await import(join(web, 'i18n.js'))) as { DICT: Record<string, Record<string, unknown>>; LANGS: string[]; DEFAULT_LANG: string };
+		expect(LANGS).toEqual(['en', 'ko']);
+		expect(DEFAULT_LANG).toBe('en');
+		expect(Object.keys(DICT.ko!).sort()).toEqual(Object.keys(DICT.en!).sort());
+		expect((DICT.en!['examples.items'] as string[]).length).toBe(4);
+		expect((DICT.ko!['examples.items'] as string[]).length).toBe(4);
+		const html = readFileSync(join(web, 'index.html'), 'utf8');
+		for (const m of html.matchAll(/data-i18n(?:-placeholder|-aria)?="([^"]+)"/g)) expect(DICT.en).toHaveProperty([m[1]!]);
+		const app = readFileSync(join(web, 'app.js'), 'utf8');
+		for (const m of app.matchAll(/\bt\('([a-zA-Z_.]+)'/g)) expect(DICT.en).toHaveProperty([m[1]!]);
+		// the chip handler sets the field and focuses it; it does not search
+		const chip = app.slice(app.indexOf("chip.addEventListener('click'"), app.indexOf('return chip;'));
+		expect(chip).toContain("$('question').value = q;");
+		expect(chip).not.toMatch(/run\(|fetch\(/);
+		expect(app).toContain("localStorage.setItem(LANG_KEY, lang)");
 	});
 });

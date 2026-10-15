@@ -32,7 +32,7 @@ Usage:
   codetrail eval   <project_id> <snapshot_id> <fixture.json> [--mode all|bm25|vector|hybrid|hybrid-role[,…]] [--k 8]
                    [--bm25-weights p,s,t,i] [--rrf-k n] [--pool n] [--out <dir>]
   codetrail serve   [--host 127.0.0.1] [--port 8080]       public HTTP API + UI for CODETRAIL_PUBLIC_PIN only
-  codetrail explain <project_id> <question>               one AI explanation (calls OpenAI if configured)
+  codetrail explain <project_id> <question> [--language en|ko]   one AI explanation (calls OpenAI if configured)
 
 Environment: CODETRAIL_DATA_DIR (default ./data), CODETRAIL_LOCAL_ROOTS (colon-separated),
 CODETRAIL_EMBED_URL, CODETRAIL_MODELS_DIR, CODETRAIL_PROVIDER_HOSTS (local embeddings), CODETRAIL_PUBLIC_PIN,
@@ -198,7 +198,7 @@ async function main(argv: string[]): Promise<number> {
 		if (group === 'explain') {
 			const [projectId, question] = need([action, ...rest].filter((v): v is string => v !== undefined), 2) as [string, string];
 			try {
-				print(await service.explain(projectId, question, 'cli'));
+				print(await service.explain(projectId, question, 'cli', undefined, undefined, one('language') ?? 'en'));
 			} finally {
 				service.close();
 			}

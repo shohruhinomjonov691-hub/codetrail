@@ -103,11 +103,29 @@ export class SearchUnavailableError extends Error {
 	}
 }
 
-/** Per-client sliding-window limit plus a per-UTC-day server cap; both count provider calls only. */
+/** One limiter slot taken for a request: refundable until its provider call starts. */
+export interface Reservation {
+	readonly id: number;
+	readonly client: string;
+	readonly at: number;
+	/** UTC day (YYYY-MM-DD) whose daily count this reservation used. */
+	readonly day: string;
+}
+
+/**
+ * Per-client sliding-window limit plus a per-UTC-day server cap; both count
+ * provider calls. `take` returns a reservation; `commit` marks its provider call
+ * as started; `refund` gives back exactly that reservation (its own window entry,
+ * and its day's count only if that day is still today) — once, and never after
+ * `commit`.
+ */
 export class ExplainLimiter {
-	private readonly calls = new Map<string, number[]>();
+	private readonly calls = new Map<string, Reservation[]>();
 	private day = '';
 	private dayCount = 0;
+	private nextId = 1;
+	/** Reservations that may still be refunded (taken, provider call not started). */
+	private readonly refundable = new Set<number>();
 
 	constructor(
 		private readonly perMinute: number,
@@ -115,29 +133,43 @@ export class ExplainLimiter {
 		private readonly now: () => number = Date.now,
 	) {}
 
-	/** Records a call and returns null, or returns why it is refused (nothing is recorded then). */
-	take(client: string): 'client_rate_limit' | 'daily_limit' | null {
+	private static dayOf(t: number): string {
+		return new Date(t).toISOString().slice(0, 10);
+	}
+
+	/** Takes a slot and returns its reservation, or returns why it is refused (nothing is recorded then). */
+	take(client: string): Reservation | 'client_rate_limit' | 'daily_limit' {
 		const t = this.now();
-		const day = new Date(t).toISOString().slice(0, 10);
+		const day = ExplainLimiter.dayOf(t);
 		if (day !== this.day) [this.day, this.dayCount] = [day, 0];
 		if (this.dayCount >= this.perDay) return 'daily_limit';
-		const recent = (this.calls.get(client) ?? []).filter((x) => t - x < 60_000);
+		const recent = (this.calls.get(client) ?? []).filter((r) => t - r.at < 60_000);
 		if (recent.length >= this.perMinute) {
 			this.calls.set(client, recent);
 			return 'client_rate_limit';
 		}
-		recent.push(t);
+		const reservation: Reservation = { id: this.nextId++, client, at: t, day };
+		recent.push(reservation);
 		this.calls.set(client, recent);
 		this.dayCount++;
-		if (this.calls.size > 10_000) for (const [k, v] of this.calls) if (v.every((x) => t - x >= 60_000)) this.calls.delete(k);
-		return null;
+		this.refundable.add(reservation.id);
+		if (this.calls.size > 10_000) for (const [k, v] of this.calls) if (v.every((r) => t - r.at >= 60_000)) this.calls.delete(k);
+		return reservation;
 	}
 
-	/** Gives back a taken slot whose provider call never started (the request was cancelled while queued). */
-	refund(client: string): void {
-		const recent = this.calls.get(client);
-		if (recent?.length) recent.pop();
-		if (this.dayCount > 0) this.dayCount--;
+	/** The provider call for this reservation has started: it can no longer be refunded. */
+	commit(reservation: Reservation): void {
+		this.refundable.delete(reservation.id);
+	}
+
+	/** Gives back this reservation if its provider call never started; returns whether anything was given back. */
+	refund(reservation: Reservation): boolean {
+		if (!this.refundable.delete(reservation.id)) return false;
+		const list = this.calls.get(reservation.client);
+		const i = list ? list.findIndex((r) => r.id === reservation.id) : -1;
+		if (list && i >= 0) list.splice(i, 1);
+		if (reservation.day === this.day && reservation.day === ExplainLimiter.dayOf(this.now()) && this.dayCount > 0) this.dayCount--;
+		return true;
 	}
 }
 
@@ -358,8 +390,8 @@ export class AnswerService {
 			return { ...base, ...hit, reason: null, cached: true };
 		}
 
-		const refused = this.limiter.take(client);
-		if (refused) return { ...base, reason: refused };
+		const reservation = this.limiter.take(client);
+		if (typeof reservation === 'string') return { ...base, reason: reservation };
 
 		const { excerpts, byId, dropped, chars } = this.excerpts(found);
 		const input = `Project: ${p.served.name} (${p.served.project_id})\nQuestion: ${found.question}\n\nExcerpts:\n\n${excerpts.map(renderExcerpt).join('\n\n')}`;
@@ -368,6 +400,7 @@ export class AnswerService {
 		let started = false;
 		try {
 			result = await this.gate.run(() => {
+				this.limiter.commit(reservation);
 				started = true;
 				return provider.generate({
 					instructions: INSTRUCTIONS,
@@ -380,7 +413,7 @@ export class AnswerService {
 			}, signal);
 		} catch (err) {
 			if (err instanceof RequestCancelledError || signal?.aborted) {
-				if (!started) this.limiter.refund(client);
+				if (!started) this.limiter.refund(reservation);
 				throw new RequestCancelledError();
 			}
 			return { ...base, reason: err instanceof GenerationError ? err.kind : 'provider', context };

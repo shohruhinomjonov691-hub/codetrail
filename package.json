@@ -2,7 +2,7 @@
   "name": "codetrail",
   "version": "0.1.0",
   "private": true,
-  "description": "Codebase RAG for TypeScript/JavaScript repositories: exact-commit snapshots, safe onboarding and AST chunking.",
+  "description": "Codebase RAG for TypeScript/JavaScript repositories: exact-commit snapshots, local hybrid search and grounded AI explanations with server-checked citations.",
   "license": "MIT",
   "type": "module",
   "bin": {

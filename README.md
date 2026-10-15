@@ -2,9 +2,24 @@
 
 CodeTrail is a codebase RAG for TypeScript/JavaScript projects. The goal is to answer questions about a repository with evidence: `source@commit:path:Lx-Ly` citations that can be checked.
 
-**Status: stages B, C1–C2 and C3 (retrieval evaluation).** Onboarding, exact-commit snapshots, safety filters, AST chunking, a local embedding provider, a per-snapshot index and hybrid (BM25 + vector + RRF) search are implemented. Not built yet: answer generation, the web UI and deployment.
+**Status.** Implemented and tested:
 
-**Local models only.** Embeddings come from a local `llama-server` (llama.cpp) running Qwen3-Embedding-0.6B. No external AI API is used, and code is never sent to a hosted model.
+- onboarding and exact-commit snapshots;
+- safety filters and secret scanning;
+- AST chunking;
+- a local embedding provider and a per-snapshot index;
+- hybrid (BM25 + vector + RRF) search;
+- an HTTP API with a developer UI;
+- AI explanations generated through the OpenAI API, with citations built and checked by the server.
+
+The OpenAI integration has been tested **only against a mock provider**; no real API request has been made yet. Not done yet: Docker and deployment. On the tuning questions, retrieval misses the 0.80 Recall@8 target for GoTrip (0.656; see below).
+
+**Where data goes.**
+
+- **Embeddings and search are local.** They use a local `llama-server` (llama.cpp) running Qwen3-Embedding-0.6B. Plain search never contacts an external service.
+- **The AI explanation is the only external call.** It runs only when the user presses "AI bilan tushuntirish". The question and compact excerpts from the **selected project's** retrieved chunks (≈12k characters at most) are then sent to the OpenAI Responses API with `store: false`.
+- **Not sent:** whole files, other projects, the repository itself, or secret-filtered files.
+- **Local generation is not used.** The local generation experiments (D0–D0c) ended without a usable result and are archived in `experiments/local-generation/`.
 
 ## What stage B does
 
@@ -195,26 +210,59 @@ v2 results. The reports were regenerated on the schema-2 snapshots (GoTrip `d75a
 - **Role-slots experiment (2026-10-15, not a default):** `--selection role-slots` (search) / `--mode hybrid-role` (eval) keeps the hybrid ranking but takes at most `k - floor(k/4)` implementation chunks (6 of 8) and `floor(k/4)` test/doc/data chunks (2 of 8) in rank order, filling empty slots by rank. Roles come from generic path/language rules (`src/retrieval/role.ts`). One predefined variant, same fixtures/k/indexes/scoring: hybrid Recall@8 GoTrip 0.656 → 0.688, ky 0.700 → 0.800; no question got worse. **The 0.80 target is still missed for GoTrip (0.688, even with role-slots)**; ky reaches 0.800 only with role-slots. It stays opt-in (the default selection is `rank`) because doc/test/config questions could lose evidence and the tuning set barely covers them. Details: `eval/reports/2026-10-15-role-slots/`.
 - **Reports:** `eval/reports/2026-10-14-v2-baseline/` and `eval/reports/2026-10-14-v2-tuned/`. The earlier `eval/reports/2026-10-14-{baseline,tuned}/` use the superseded v1 scoring (line overlap, every expected item required). They are kept for history and must not be compared with v2.
 
-## Local LLM feasibility (D0, 2026-10-15)
+## Search API, AI explanations and UI
 
-D0 was a benchmark only; there is no answer generation in CodeTrail yet. Qwen2.5-Coder-1.5B-Instruct Q4_K_M (pinned in `models.lock.json` → `generation`, loopback llama-server via `scripts/gen-server.sh`) answered 13 tuning questions from the default retrieval. Each claim was graded by hand:
+```bash
+npm run build
+scripts/embed-server.sh &                 # local embeddings (CODETRAIL_MODELS_DIR=…)
+npm run cli -- serve --port 8080          # http://127.0.0.1:8080
+npm run cli -- explain ky "How is the request timeout implemented?"   # one explanation from the CLI
+```
 
-- **0/13** answers met the rule "every claim correct and validly cited";
-- 0/3 unanswerable questions were abstained on;
-- only 1 answer cited anything, and that answer was wrong.
+- **Projects are operator-managed.** `CODETRAIL_SERVE_PROJECTS=ky,gotrip` (optionally `project:snapshot`) chooses what the server offers. Without it, the server offers every registered project with a usable index, at its newest snapshot. There is no HTTP endpoint to add repositories; projects are added with the CLI (`project add`, `source add-*`, `snapshot create`, `index`).
+- **Every request names a project.** `POST /api/search` and `POST /api/explain` take `{project_id, question, snapshot_id?}`. A `snapshot_id` other than the served one is refused. Retrieval reads only that project's index, and the model only receives that project's excerpts.
+- **Search (`/api/search`)** returns the top 8 hybrid hits with `source@commit:path:Lx-Ly`, role and the exact chunk text from the snapshot. It never calls the model.
+- **AI explanation (`/api/explain`)** runs the same search and builds compact, line-numbered excerpts (at most `CODETRAIL_AI_MAX_CONTEXT_CHARS`, default 12 000). It then makes **one** OpenAI call with a strict JSON schema: `{status, claims[{text, source_id, lines}]}`.
+  - The model names only an excerpt and a line range. The server copies the cited code, commit and path from the snapshot.
+  - The validator is fail-closed. Any unknown excerpt, unshown line, oversized claim, invalid JSON or incomplete response (`max_output_tokens`) rejects the **whole** answer; no partial answer is shown.
+  - A citation shows where a claim points, not that the claim is true; the UI says so.
+- **Insufficient evidence.** If the model reports `insufficient_evidence`, or search finds nothing, the response is "Tanlangan loyiha bo‘yicha yetarli dalil topilmadi" plus the sources.
+- **Fallback.** The local sources are always returned (file, lines, commit, code) together with "AI tushuntirish hozir mavjud emas — kod manbalari" and a reason when any of these happens:
+  - no key, a rejected key, exhausted quota or credit, or the provider's rate limit;
+  - a timeout or a provider error;
+  - a refusal, or an answer that is invalid or incomplete;
+  - CodeTrail's own per-client or daily limit.
 
-On the development Mac (not a server), with about 5.9k context tokens, the first token took about 10 s and the server used about 1.3 GB RSS. **The model is not sufficient**, and D1 must enforce citations and abstention mechanically. Details: `eval/reports/2026-10-15-d0-llm/`.
-
-**D0b (2026-10-15):** the same model with compact line-numbered excerpts, schema-constrained JSON claims (`status` + `claims[{text, source_id, lines, quote}]`) and a fail-closed validator (`src/eval/grounded.ts`). End-to-end on the default retrieval: **0/10** answerable questions answered correctly and validly, and 2/3 unanswerable questions abstained. With golden evidence, which is a diagnostic only, 2/10. Three answers passed the validator although their claims were false, so a valid quote does not prove a claim. TTFT fell to about 4.4 s at about 2.9k prompt tokens (Mac). Details: `eval/reports/2026-10-15-d0b-grounded/`.
-
-**D0c (2026-10-15, 7B, not run):** Qwen2.5-Coder-7B-Instruct Q4_K_M was downloaded, verified and pinned (`models.lock.json` → `generation7b`, Mac benchmark only), and a protocol was committed before the run. Loading the 7B model next to the embedding server drove the Mac to memory-pressure level 4 (7% free) while other apps were open, so the memory guard stopped the run before any generation. There are no 7B results yet. See `eval/reports/2026-10-15-d0c-7b/`.
+  A failure of local search itself (embedding server or index) is a separate HTTP 503 `SEARCH_UNAVAILABLE`.
+- **Cost controls:**
+  - no automatic retries and no fallback model;
+  - at most `CODETRAIL_AI_CONCURRENCY` (2) parallel calls;
+  - `CODETRAIL_AI_RATE_PER_MINUTE` (6) per client and `CODETRAIL_AI_DAILY_LIMIT` (200) per server;
+  - an in-memory cache of validated answers keyed by project, snapshot, index, model, prompt version and normalised question;
+  - output capped by `CODETRAIL_AI_MAX_OUTPUT_TOKENS` (2048, including reasoning).
+- **Model:** `CODETRAIL_OPENAI_MODEL`, default `gpt-6-luna`.
+  - Choice: OpenAI's model page (checked 2026-10-15) recommends it for cost-sensitive, high-volume work and lists Structured Outputs and the Responses API for it.
+  - Price on 2026-10-15: $0.10 per 1M input and $0.50 per 1M output tokens.
+  - Strict schemas there do not accept `minLength` or `maxLength`, so claim length is enforced by the server validator.
+- **Secrets:**
+  - The key (`CODETRAIL_OPENAI_API_KEY`) is read only by the backend, from the environment or the git-ignored `.env`.
+  - It is sent only in the `Authorization` header to `https://api.openai.com`; no other host is accepted, except a plain-http loopback mock for local tests.
+  - It is never written to responses or logs. Provider error messages are not echoed.
+  - Logs record route, status, duration and mode/reason only: no question, prompt, code or key.
+- **UI** (`web/`, no framework and no external assets, strict CSP):
+  - project picker; "Qidirish" for local search only and "AI bilan tushuntirish" for an explanation;
+  - claim cards with server-quoted code; source cards with syntax-highlighted, line-numbered code;
+  - loading, empty, insufficient-evidence, fallback and search-error states;
+  - layout for desktop and mobile.
+- **Not included:** web search, automatic code edits, pull requests and shell execution.
+- **Local generation experiments (archived).** D0, D0b and D0c with Qwen2.5-Coder 1.5B/7B: the 1.5B model gave 0/13 and 0/10 strictly grounded answers, and the 7B run was stopped by the memory guard on the development Mac. The scripts are in `experiments/local-generation/` and the reports in `eval/reports/2026-10-15-d0*`.
 
 ## Support boundaries
 
 - **Languages:** only TypeScript/JavaScript code is chunked by AST. Markdown, JSON, YAML and GraphQL are chunked as text. No other languages are supported.
 - **Sources:** only local Git repositories under `CODETRAIL_LOCAL_ROOTS` and `https://github.com/<owner>/<repo>` URLs. No other hosts, SSH, credentials in URLs, ZIP uploads or arbitrary paths. Private GitHub repositories are not supported: user and system git config, including credential helpers, are deliberately ignored, and CodeTrail never handles tokens.
 - **Secret scanning:** it is pattern-based and does not guarantee that no secret gets through. The default is to fail closed: a suspected secret blocks the snapshot or excludes the file. An excluded `.env.example` has to be reviewed by hand.
-- **Untrusted content:** repository content (comments, docs) is data, never instructions. Later stages must treat it as untrusted model input (prompt injection).
+- **Untrusted content:** repository content (comments, docs) is data, never instructions. The AI instructions say so, and every claim must cite shown lines. This reduces prompt-injection risk but does not eliminate it.
 - **Out of scope:** automatic edits, pull requests and shell execution.
 - **Known environment issue:** repositories under `~/Desktop` on the development Mac occasionally fail to read with SIGBUS or `pack-objects died`. The objects are intact and `git fsck` is clean.
   - CodeTrail passes `core.packedGitWindowSize=1m` to every git call.

@@ -44,11 +44,3 @@ const runtimeDir = join(dir, 'runtime', lock.runtime.release);
 mkdirSync(runtimeDir, { recursive: true });
 execFileSync('tar', ['-xzf', archive, '-C', runtimeDir]);
 await fetchVerified(lock.embedding.url, join(dir, 'models', lock.embedding.file), lock.embedding.sha256);
-// The D0 generation benchmark model is fetched only on request: node scripts/fetch-models.mjs <platform> --generation
-if (lock.generation && process.argv.includes('--generation')) {
-	await fetchVerified(lock.generation.url, join(dir, 'models', lock.generation.file), lock.generation.sha256);
-}
-// The D0c 7B benchmark model (Mac only): node scripts/fetch-models.mjs <platform> --generation7b
-if (lock.generation7b && process.argv.includes('--generation7b')) {
-	await fetchVerified(lock.generation7b.url, join(dir, 'models', lock.generation7b.file), lock.generation7b.sha256);
-}

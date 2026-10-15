@@ -1,15 +1,15 @@
 import { QUERY_STOPWORDS, splitIdentifiers } from '../retrieval/text.js';
 
 /**
- * D0b grounded-answer benchmark helpers (experimental; no CodeTrail command uses
- * them). Compact excerpts keep their original line numbers; the model must answer
- * with schema-constrained JSON; validateGroundedAnswer rejects the WHOLE answer
- * when anything about it is invalid (fail-closed — claims are never dropped to
- * keep the rest). A valid answer is still not a correct one: quotes and citations
- * are only mechanical checks and every claim is graded by hand.
+ * Grounded-answer building blocks used by the AI explanation (src/answer/explain.ts):
+ * compact, line-numbered excerpts of retrieved chunks; the answer schema in
+ * which the model cites only an excerpt id and a line range; and a fail-closed
+ * validator that rejects the WHOLE answer on any problem and builds every
+ * citation (path, lines, exact code) from the snapshot itself. A valid answer is
+ * not proof that a claim is correct.
  */
 
-export const EXCERPT_LIMITS = { contextLines: 2, mergeGap: 2, maxLinesPerExcerpt: 30, fallbackLines: 15, maxClaims: 6, minQuoteChars: 8 } as const;
+export const EXCERPT_LIMITS = { contextLines: 2, mergeGap: 2, maxLinesPerExcerpt: 30, fallbackLines: 15 } as const;
 
 export interface ExcerptLine {
 	line: number;
@@ -69,14 +69,6 @@ export function compactLines(text: string, startLine: number, terms: readonly st
 	return all.filter((l) => keep.has(l.line));
 }
 
-/** Lines [a, z] of a full file text (1-based, clipped). */
-export function fileLines(text: string, a: number, z: number): ExcerptLine[] {
-	const lines = text.split('\n');
-	const out: ExcerptLine[] = [];
-	for (let n = Math.max(1, a); n <= Math.min(lines.length, z); n++) out.push({ line: n, text: lines[n - 1] as string });
-	return out;
-}
-
 /** Renders an excerpt for the prompt; skipped lines are shown as `…`. */
 export function renderExcerpt(e: Excerpt): string {
 	const out: string[] = [`[${e.id}] ${e.source_id}:${e.path}`];
@@ -89,103 +81,11 @@ export function renderExcerpt(e: Excerpt): string {
 	return out.join('\n');
 }
 
-export const GROUNDED_SCHEMA = {
-	type: 'object',
-	additionalProperties: false,
-	required: ['status', 'claims'],
-	properties: {
-		status: { type: 'string', enum: ['answered', 'insufficient_evidence'] },
-		claims: {
-			type: 'array',
-			maxItems: EXCERPT_LIMITS.maxClaims,
-			items: {
-				type: 'object',
-				additionalProperties: false,
-				required: ['text', 'source_id', 'lines', 'quote'],
-				properties: {
-					text: { type: 'string' },
-					source_id: { type: 'string', pattern: '^S[0-9]+$' },
-					lines: {
-						type: 'object',
-						additionalProperties: false,
-						required: ['start', 'end'],
-						properties: { start: { type: 'integer' }, end: { type: 'integer' } },
-					},
-					quote: { type: 'string' },
-				},
-			},
-		},
-	},
-} as const;
-
-export interface GroundedClaim {
-	text: string;
-	source_id: string;
-	lines: { start: number; end: number };
-	quote: string;
-}
-
-export interface GroundedAnswer {
-	status: 'answered' | 'insufficient_evidence';
-	claims: GroundedClaim[];
-}
-
-export type Validation = { ok: true; answer: GroundedAnswer } | { ok: false; reasons: string[]; answer: GroundedAnswer | null };
-
-const norm = (s: string): string => s.replace(/\s+/g, ' ').trim();
-const isObj = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v);
-
 /**
- * Mechanical, fail-closed check of a model answer against the excerpts it was
- * given. Any problem rejects the whole answer:
- * - not JSON / wrong shape / extra fields / unknown status;
- * - `answered` with no claims, `insufficient_evidence` with claims, too many claims;
- * - a claim citing an unknown excerpt, lines outside the lines that excerpt showed,
- *   start > end, an empty text, a quote shorter than minQuoteChars, or a quote that
- *   does not occur (whitespace-normalised) in the cited lines.
- */
-export function validateGroundedAnswer(raw: string, excerpts: readonly Excerpt[]): Validation {
-	let parsed: unknown;
-	try {
-		parsed = JSON.parse(raw);
-	} catch {
-		return { ok: false, reasons: ['not valid JSON'], answer: null };
-	}
-	const reasons: string[] = [];
-	if (!isObj(parsed) || Object.keys(parsed).sort().join() !== 'claims,status') return { ok: false, reasons: ['unexpected top-level shape'], answer: null };
-	const { status, claims } = parsed;
-	if (status !== 'answered' && status !== 'insufficient_evidence') return { ok: false, reasons: ['unknown status'], answer: null };
-	if (!Array.isArray(claims)) return { ok: false, reasons: ['claims is not an array'], answer: null };
-	const answer = parsed as unknown as GroundedAnswer;
-	if (status === 'answered' && claims.length === 0) reasons.push('answered without claims');
-	if (status === 'insufficient_evidence' && claims.length > 0) reasons.push('insufficient_evidence with claims');
-	if (claims.length > EXCERPT_LIMITS.maxClaims) reasons.push(`more than ${EXCERPT_LIMITS.maxClaims} claims`);
-	const byId = new Map(excerpts.map((e) => [e.id, e]));
-	claims.forEach((c: unknown, i) => {
-		const at = `claim ${i + 1}`;
-		if (!isObj(c) || Object.keys(c).sort().join() !== 'lines,quote,source_id,text') return void reasons.push(`${at}: unexpected shape`);
-		const { text, source_id, lines, quote } = c;
-		if (typeof text !== 'string' || !text.trim()) reasons.push(`${at}: empty text`);
-		if (!isObj(lines) || !Number.isInteger(lines.start) || !Number.isInteger(lines.end)) return void reasons.push(`${at}: invalid lines`);
-		const start = lines.start as number;
-		const end = lines.end as number;
-		if (start > end) return void reasons.push(`${at}: start > end`);
-		const e = typeof source_id === 'string' ? byId.get(source_id) : undefined;
-		if (!e) return void reasons.push(`${at}: unknown excerpt ${String(source_id)}`);
-		const shown = new Map(e.lines.map((l) => [l.line, l.text]));
-		for (let n = start; n <= end; n++) if (!shown.has(n)) return void reasons.push(`${at}: line ${n} was not shown in ${e.id}`);
-		if (typeof quote !== 'string' || norm(quote).length < EXCERPT_LIMITS.minQuoteChars) return void reasons.push(`${at}: quote too short`);
-		const cited = norm(Array.from({ length: end - start + 1 }, (_, k) => shown.get(start + k) as string).join('\n'));
-		if (!cited.includes(norm(quote))) reasons.push(`${at}: quote not found in ${e.id}:L${start}-L${end}`);
-	});
-	return reasons.length ? { ok: false, reasons, answer } : { ok: true, answer };
-}
-
-/**
- * D0c protocol (cited lines, server-derived quotes): the model names only the
+ * Answer schema (cited lines, server-derived quotes): the model names only the
  * excerpt and the line range; the server copies the cited text itself, so the
- * model is never asked to reproduce code. Strings and arrays are bounded so a
- * schema-valid answer always fits the output budget (see CITED_OUTPUT_BUDGET).
+ * model is never asked to reproduce code. The claim count is bounded by the
+ * schema; the claim text length is enforced by validateCitedAnswer.
  */
 export const CITED_LIMITS = { maxClaims: 6, maxTextChars: 240, maxCitedLines: 12 } as const;
 
@@ -203,7 +103,8 @@ export const CITED_SCHEMA = {
 				additionalProperties: false,
 				required: ['text', 'source_id', 'lines'],
 				properties: {
-					text: { type: 'string', minLength: 1, maxLength: CITED_LIMITS.maxTextChars },
+					// Length is enforced by validateCitedAnswer: OpenAI strict schemas do not support minLength/maxLength.
+					text: { type: 'string' },
 					source_id: { type: 'string', pattern: '^S[0-9]{1,2}$' },
 					lines: {
 						type: 'object',
@@ -218,12 +119,15 @@ export const CITED_SCHEMA = {
 } as const;
 
 /**
- * Output budget for CITED_SCHEMA. Pessimistic per claim: 240 chars of text at
- * 2 chars/token = 120 tokens, plus ~50 tokens of keys, ids, numbers and
- * whitespace → ~170; 6 claims + envelope ≈ 1040 tokens. 1536 leaves ~1.5×
- * headroom; a response that still stops on the length limit is "incomplete".
+ * Visible-answer budget for CITED_SCHEMA. Pessimistic per claim: 240 chars of
+ * text at 2 chars/token = 120 tokens, plus ~50 tokens of keys, ids, numbers and
+ * whitespace → ~170; 6 claims + envelope ≈ 1060 tokens. 1536 leaves ~1.45×
+ * headroom. Reasoning tokens (if the model reasons) come on top; see
+ * generation settings. A response that stops on the length limit is "incomplete".
  */
 export const CITED_OUTPUT_BUDGET = 1536;
+
+const isObj = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v);
 
 export interface CitedClaim {
 	text: string;
@@ -241,7 +145,7 @@ export interface CitedAnswer {
 export type CitedValidation = { ok: true; answer: CitedAnswer } | { ok: false; reasons: string[] };
 
 /**
- * Fail-closed check of a D0c answer. Rejects the WHOLE answer if the generation
+ * Fail-closed check of a model answer. Rejects the WHOLE answer if the generation
  * did not finish (`finishReason` other than "stop"), the JSON is invalid or has
  * the wrong shape, `answered` has no claims or `insufficient_evidence` has
  * claims, or any claim cites an unknown excerpt, lines it did not show, a

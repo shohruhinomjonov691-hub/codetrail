@@ -8,6 +8,9 @@ import { ftsQuery } from './text.js';
 
 export type SearchMode = 'bm25' | 'vector' | 'hybrid';
 
+/** Query embeddings kept per search session (oldest evicted first). */
+export const QUERY_VECTOR_CACHE_SIZE = 256;
+
 /**
  * How the top k is chosen from the ranked candidates:
  * - rank (default): the first k by score;
@@ -175,6 +178,8 @@ async function runSearch(
 			const [embedded] = await provider.embed([input], 'query');
 			assertQueryVector(embedded, index.meta.dims, 'Query embedding');
 			qv = embedded;
+			// Bounded: a long-running server session must not grow with every distinct question.
+			if (queryVectors.size >= QUERY_VECTOR_CACHE_SIZE) queryVectors.delete(queryVectors.keys().next().value as string);
 			queryVectors.set(input, qv);
 		}
 		const dims = index.meta.dims;

@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="uz">
+<head>
+	<meta charset="utf-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1">
+	<title>CodeTrail</title>
+	<link rel="icon" href="data:,">
+	<link rel="stylesheet" href="/style.css">
+	<script type="module" src="/app.js"></script>
+</head>
+<body>
+	<header class="top">
+		<div class="brand"><span class="logo" aria-hidden="true">⌥</span> CodeTrail</div>
+		<div class="ai-badge" id="ai-badge" hidden></div>
+	</header>
+	<main class="layout">
+		<form class="ask" id="ask" autocomplete="off">
+			<label class="field">
+				<span>Loyiha</span>
+				<select id="project" required></select>
+			</label>
+			<p class="project-meta" id="project-meta"></p>
+			<label class="field">
+				<span>Savol</span>
+				<textarea id="question" rows="3" maxlength="1000" required placeholder="Masalan: Request timeout qanday ishlaydi?"></textarea>
+			</label>
+			<div class="actions">
+				<button type="submit" id="search-btn" class="secondary">Qidirish</button>
+				<button type="button" id="explain-btn" class="primary">AI bilan tushuntirish</button>
+			</div>
+			<p class="hint">Qidiruv faqat tanlangan loyiha snapshot’ida lokal bajariladi. AI faqat “AI bilan tushuntirish” bosilganda chaqiriladi.</p>
+		</form>
+		<section class="results" aria-live="polite">
+			<div id="status"></div>
+			<section id="answer" hidden></section>
+			<section id="sources" hidden>
+				<h2 class="section-title">Kod manbalari</h2>
+				<div id="source-list"></div>
+			</section>
+		</section>
+	</main>
+</body>
+</html>

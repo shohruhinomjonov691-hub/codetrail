@@ -10,6 +10,9 @@ import { buildIndex, loadIndex } from './retrieval/index.js';
 import { search, type SearchMode, type SearchSelection, type SearchTuning } from './retrieval/search.js';
 import { loadFixture } from './eval/fixture.js';
 import { EVAL_MODES, renderMarkdown, runEvaluation, type EvalMode } from './eval/run.js';
+import { AnswerService } from './answer/service.js';
+import { createGenerationProvider, generationSettings } from './generation/config.js';
+import { createHttpServer } from './server/http.js';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { join as joinPath } from 'node:path';
 
@@ -28,9 +31,12 @@ Usage:
                    [--selection rank|role-slots]
   codetrail eval   <project_id> <snapshot_id> <fixture.json> [--mode all|bm25|vector|hybrid|hybrid-role[,…]] [--k 8]
                    [--bm25-weights p,s,t,i] [--rrf-k n] [--pool n] [--out <dir>]
+  codetrail serve   [--host 127.0.0.1] [--port 8080]       HTTP API + developer UI
+  codetrail explain <project_id> <question>               one AI explanation (calls OpenAI if configured)
 
 Environment: CODETRAIL_DATA_DIR (default ./data), CODETRAIL_LOCAL_ROOTS (colon-separated),
-CODETRAIL_EMBED_URL, CODETRAIL_MODELS_DIR, CODETRAIL_PROVIDER_HOSTS (local models only; see .env.example).
+CODETRAIL_EMBED_URL, CODETRAIL_MODELS_DIR, CODETRAIL_PROVIDER_HOSTS (local embeddings), CODETRAIL_SERVE_PROJECTS,
+CODETRAIL_OPENAI_API_KEY / CODETRAIL_OPENAI_MODEL / CODETRAIL_AI_* (answer generation; see .env.example).
 Output is JSON. File contents and secret values are never printed.`;
 
 interface Parsed {
@@ -169,6 +175,47 @@ async function main(argv: string[]): Promise<number> {
 			writeFileSync(joinPath(out, `${projectId}.md`), renderMarkdown(result));
 		}
 		print({ project: result.project, snapshot_id: result.snapshot_id, index_id: result.index_id, k: result.k, tuning: result.tuning, modes: result.modes.map((m) => ({ mode: m.mode, ...m.overall })) });
+		return 0;
+	}
+	if (group === 'serve' || group === 'explain') {
+		const settings = embeddingSettings();
+		const gen = generationSettings();
+		const service = new AnswerService({
+			config,
+			recipe: settings.recipe,
+			embedding: await createEmbeddingProvider(config, settings),
+			generation: createGenerationProvider(gen),
+			limits: gen,
+			serve: (process.env.CODETRAIL_SERVE_PROJECTS ?? '').split(',').map((s) => s.trim()).filter(Boolean),
+		});
+		const { served, skipped } = service.load();
+		if (group === 'explain') {
+			const [projectId, question] = need([action, ...rest].filter((v): v is string => v !== undefined), 2) as [string, string];
+			try {
+				print(await service.explain(projectId, question, 'cli'));
+			} finally {
+				service.close();
+			}
+			return 0;
+		}
+		const host = one('host') ?? '127.0.0.1';
+		const port = Number(one('port') ?? 8080);
+		if (!Number.isInteger(port) || port < 1 || port > 65535) throw new CodeTrailError('USAGE', '--port must be 1..65535');
+		const server = createHttpServer(service, {
+			trustProxy: process.env.CODETRAIL_TRUST_PROXY === '1',
+			log: (line) => process.stderr.write(`${new Date().toISOString()} ${line}\n`),
+		});
+		await new Promise<void>((resolve) => void server.listen(port, host, () => resolve()));
+		process.stderr.write(
+			`codetrail serving ${served.map((p) => `${p.project_id}@${p.snapshot_id.slice(0, 8)}`).join(', ') || '(no projects)'} on http://${host}:${port}` +
+				`${skipped.length ? `; skipped ${skipped.map((s) => `${s.project_id} (${s.reason})`).join(', ')}` : ''}; AI ${gen.apiKey ? `on (${gen.model})` : 'off (no CODETRAIL_OPENAI_API_KEY)'}\n`,
+		);
+		await new Promise<void>((resolve) => {
+			const stop = (): void => void server.close(() => resolve());
+			process.once('SIGINT', stop);
+			process.once('SIGTERM', stop);
+		});
+		service.close();
 		return 0;
 	}
 	process.stderr.write(USAGE + '\n');

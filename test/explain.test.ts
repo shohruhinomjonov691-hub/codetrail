@@ -21,7 +21,7 @@ import { classifyHttpError, OpenAIResponsesProvider, validateOpenAIBaseUrl } fro
 import type { GenerationProvider } from '../src/generation/provider.js';
 import { Registry } from '../src/registry.js';
 import { buildIndex } from '../src/retrieval/index.js';
-import { createHttpServer } from '../src/server/http.js';
+import { createHttpServer, parsePublicPin, type PublicPin } from '../src/server/http.js';
 import { createSnapshot } from '../src/snapshot.js';
 import { FAKE_MODEL_FILE, FAKE_MODEL_SHA256, startFakeLlama, type FakeLlama } from './fake-llama.js';
 import { makeRepo, tempDir } from './helpers.js';
@@ -389,7 +389,7 @@ describe('generation settings and provider guards', () => {
 	});
 });
 
-describe('HTTP API and UI bundle', () => {
+describe('HTTP API (internal, unpinned module) and UI bundle', () => {
 	let s: AnswerService;
 	let http: Server;
 	let base: string;
@@ -426,6 +426,17 @@ describe('HTTP API and UI bundle', () => {
 		const projects = await (await fetch(`${base}/api/projects`)).text();
 		expect(projects).not.toContain(KEY);
 		expect(JSON.parse(projects)).toMatchObject({ ai: { available: true, model: 'gpt-6-luna' } });
+	});
+
+	it('the UI has no project picker or repository input and never sends a project id', () => {
+		const web = join(import.meta.dirname, '..', 'web');
+		const html = readFileSync(join(web, 'index.html'), 'utf8');
+		const app = readFileSync(join(web, 'app.js'), 'utf8');
+		expect(html).not.toMatch(/<select|type="file"|repo(sitory)? ?url/i);
+		expect(app).not.toContain('project_id');
+		// the only request payload is the question (snapshot_id is shown, never sent)
+		expect(app).toContain("'/api/search', { question })");
+		expect(app).not.toMatch(/snapshot_id\s*:/);
 	});
 
 	it('validates requests', async () => {
@@ -465,6 +476,74 @@ describe('HTTP: local search down', () => {
 		} finally {
 			await new Promise<void>((resolve) => void http.close(() => resolve()));
 			s.close();
+		}
+	});
+});
+
+describe('public server pinned to one project and snapshot', () => {
+	let s: AnswerService;
+	let http: Server;
+	let base: string;
+	let pin: PublicPin;
+
+	beforeAll(async () => {
+		// The service itself is multi-project; the public HTTP layer pins it.
+		s = service();
+		const alpha = s.list().find((p) => p.project_id === 'alpha')!;
+		pin = { project_id: 'alpha', snapshot_id: alpha.snapshot_id };
+		http = createHttpServer(s, { pinned: pin });
+		await new Promise<void>((resolve) => void http.listen(0, '127.0.0.1', () => resolve()));
+		base = `http://127.0.0.1:${(http.address() as AddressInfo).port}`;
+	});
+	afterAll(async () => {
+		await new Promise<void>((resolve) => void http.close(() => resolve()));
+		s.close();
+	});
+	const post = (path: string, body: unknown) => fetch(`${base}${path}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+
+	it('lists only the pinned project', async () => {
+		const data = (await (await fetch(`${base}/api/projects`)).json()) as { projects: { project_id: string }[]; pinned: boolean };
+		expect(data.pinned).toBe(true);
+		expect(data.projects.map((p) => p.project_id)).toEqual(['alpha']);
+	});
+
+	it('answers without a project id, only from the pinned project', async () => {
+		const r = (await (await post('/api/search', { question: 'request timeout' })).json()) as { project_id: string; snapshot_id: string; hits: { path: string; commit: string }[] };
+		expect(r.project_id).toBe('alpha');
+		expect(r.snapshot_id).toBe(pin.snapshot_id);
+		expect(r.hits.length).toBeGreaterThan(0);
+		expect(r.hits.every((h) => h.path.startsWith('src/') && h.commit === commits.alpha)).toBe(true);
+	});
+
+	it('refuses any other project or snapshot (403) and never calls the model', async () => {
+		for (const path of ['/api/search', '/api/explain']) {
+			const p = await post(path, { project_id: 'beta', question: 'request timeout' });
+			expect(p.status).toBe(403);
+			expect(await p.json()).toMatchObject({ error: { code: 'PROJECT_NOT_ALLOWED' } });
+			const q = await post(path, { project_id: 'alpha', snapshot_id: 'f'.repeat(24), question: 'request timeout' });
+			expect(q.status).toBe(403);
+			expect(await q.json()).toMatchObject({ error: { code: 'SNAPSHOT_NOT_ALLOWED' } });
+		}
+		expect((await post('/api/search', { project_id: 'alpha', snapshot_id: pin.snapshot_id, question: 'request timeout' })).status).toBe(200);
+		expect(requests).toHaveLength(0);
+	});
+
+	it('out-of-project question abstains; API failure keeps pinned sources', async () => {
+		reply = () => completed({ status: 'insufficient_evidence', claims: [] });
+		const a = (await (await post('/api/explain', { question: 'How do I bake bread?' })).json()) as ExplainResponse;
+		expect(a).toMatchObject({ project_id: 'alpha', mode: 'insufficient', message: INSUFFICIENT_MESSAGE });
+		expect(String(requests[0]?.body.input)).not.toMatch(/lib\/|chargeCard|betaTimeoutMarker/);
+		reply = () => ({ status: 401, body: { error: { code: 'invalid_api_key' } } });
+		const b = (await (await post('/api/explain', { question: 'retry delay attempt' })).json()) as ExplainResponse;
+		expect(b).toMatchObject({ project_id: 'alpha', mode: 'fallback', reason: 'auth' });
+		expect(b.hits.length).toBeGreaterThan(0);
+		expect(b.hits.every((h) => h.path.startsWith('src/'))).toBe(true);
+	});
+
+	it('parsePublicPin requires project and a full snapshot id', () => {
+		expect(parsePublicPin('gotrip:d75aaec921284e35893092a7')).toEqual({ project_id: 'gotrip', snapshot_id: 'd75aaec921284e35893092a7' });
+		for (const bad of [undefined, '', 'gotrip', 'gotrip:', ':d75aaec921284e35893092a7', 'gotrip:d75aaec9', 'Go Trip:d75aaec921284e35893092a7', 'gotrip:d75aaec921284e35893092a7:x']) {
+			expect(() => parsePublicPin(bad)).toThrow();
 		}
 	});
 });

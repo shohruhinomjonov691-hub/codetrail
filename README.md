@@ -12,7 +12,7 @@ CodeTrail is a codebase RAG for TypeScript/JavaScript projects. The goal is to a
 - an HTTP API with a developer UI;
 - AI explanations generated through the OpenAI API, with citations built and checked by the server.
 
-The OpenAI integration has been tested **only against a mock provider**; no real API request has been made yet. Not done yet: Docker and deployment. On the tuning questions, retrieval misses the 0.80 Recall@8 target for GoTrip (0.656; see below).
+The OpenAI integration has been tested **only against a mock provider**; no real API request has been made yet. The public server is pinned to the GoTrip frontend + backend snapshot. Not done yet: Docker and deployment. On the tuning questions, retrieval misses the 0.80 Recall@8 target for GoTrip (0.656; see below).
 
 **Where data goes.**
 
@@ -215,12 +215,12 @@ v2 results. The reports were regenerated on the schema-2 snapshots (GoTrip `d75a
 ```bash
 npm run build
 scripts/embed-server.sh &                 # local embeddings (CODETRAIL_MODELS_DIR=…)
-npm run cli -- serve --port 8080          # http://127.0.0.1:8080
-npm run cli -- explain ky "How is the request timeout implemented?"   # one explanation from the CLI
+CODETRAIL_PUBLIC_PIN=gotrip:d75aaec921284e35893092a7 npm run cli -- serve --port 8080   # http://127.0.0.1:8080
+npm run cli -- explain gotrip "Where does AuthGuard get the token from and how is it verified?"   # operator CLI, one explanation
 ```
 
-- **Projects are operator-managed.** `CODETRAIL_SERVE_PROJECTS=ky,gotrip` (optionally `project:snapshot`) chooses what the server offers. Without it, the server offers every registered project with a usable index, at its newest snapshot. There is no HTTP endpoint to add repositories; projects are added with the CLI (`project add`, `source add-*`, `snapshot create`, `index`).
-- **Every request names a project.** `POST /api/search` and `POST /api/explain` take `{project_id, question, snapshot_id?}`. A `snapshot_id` other than the served one is refused. Retrieval reads only that project's index, and the model only receives that project's excerpts.
+- **The public server is pinned to one project and snapshot.** `serve` needs `CODETRAIL_PUBLIC_PIN=<project>:<snapshot>` (the public demo: `gotrip:d75aaec9…`, the GoTrip frontend + backend snapshot) and refuses to start without it, or if that snapshot has no usable index. The UI shows that project only: there is no project picker and no way to upload or connect a repository. Projects and snapshots are created by the operator with the CLI (`project add`, `source add-*`, `snapshot create`, `index`); the internal modules stay multi-project (the operator CLI `explain <project>` can address any indexed project).
+- **Requests.** `POST /api/search` and `POST /api/explain` take `{question}`; `project_id`/`snapshot_id` may be omitted and are then the pinned ones, any other value is refused with 403 (`PROJECT_NOT_ALLOWED` / `SNAPSHOT_NOT_ALLOWED`). Retrieval reads only the pinned project's index and the model only receives its excerpts.
 - **Search (`/api/search`)** returns the top 8 hybrid hits with `source@commit:path:Lx-Ly`, role and the exact chunk text from the snapshot. It never calls the model.
 - **AI explanation (`/api/explain`)** runs the same search and builds compact, line-numbered excerpts (at most `CODETRAIL_AI_MAX_CONTEXT_CHARS`, default 12 000). It then makes **one** OpenAI call with a strict JSON schema: `{status, claims[{text, source_id, lines}]}`.
   - The model names only an excerpt and a line range. The server copies the cited code, commit and path from the snapshot.
@@ -244,13 +244,15 @@ npm run cli -- explain ky "How is the request timeout implemented?"   # one expl
   - Choice: OpenAI's model page (checked 2026-10-15) recommends it for cost-sensitive, high-volume work and lists Structured Outputs and the Responses API for it.
   - Price on 2026-10-15: $0.10 per 1M input and $0.50 per 1M output tokens.
   - Strict schemas there do not accept `minLength` or `maxLength`, so claim length is enforced by the server validator.
+  - **Cost per explanation is an estimate, not a maximum.** The input is capped at 14 067 characters (excerpts ≤ 12 000 + instructions + question), roughly 3.5–4.7k tokens at an assumed 3–4 characters per token, and the output at 2048 tokens. At the prices above that is about $0.0015 per explanation. This is a character-based estimate: the real token count is only known from the API's `usage`, which every response reports.
 - **Secrets:**
   - The key (`CODETRAIL_OPENAI_API_KEY`) is read only by the backend, from the environment or the git-ignored `.env`.
   - It is sent only in the `Authorization` header to `https://api.openai.com`; no other host is accepted, except a plain-http loopback mock for local tests.
+  - CodeTrail calls only `POST /v1/responses`, so a restricted key with just the Responses API write permission is sufficient.
   - It is never written to responses or logs. Provider error messages are not echoed.
   - Logs record route, status, duration and mode/reason only: no question, prompt, code or key.
 - **UI** (`web/`, no framework and no external assets, strict CSP):
-  - project picker; "Qidirish" for local search only and "AI bilan tushuntirish" for an explanation;
+  - the pinned project's name and snapshot (no picker); "Qidirish" for local search only and "AI bilan tushuntirish" for an explanation;
   - claim cards with server-quoted code; source cards with syntax-highlighted, line-numbered code;
   - loading, empty, insufficient-evidence, fallback and search-error states;
   - layout for desktop and mobile.

@@ -32,6 +32,17 @@ describe('cli', () => {
 		expect(snap.stdout + snap.stderr).not.toContain(CANARY.githubToken);
 	});
 
+	it('serve refuses to start without a valid CODETRAIL_PUBLIC_PIN, or when the pinned snapshot has no index', () => {
+		const root = tempDir('cli-serve');
+		const env = { CODETRAIL_DATA_DIR: join(root, 'data'), CODETRAIL_PUBLIC_PIN: '', CODETRAIL_OPENAI_API_KEY: '' };
+		const none = run(env, 'serve', '--port', '1');
+		expect(none.code).toBe(64);
+		expect(none.stderr).toContain('CODETRAIL_PUBLIC_PIN');
+		const missing = run({ ...env, CODETRAIL_PUBLIC_PIN: 'gotrip:d75aaec921284e35893092a7' }, 'serve', '--port', '1');
+		expect(missing.code).toBe(1);
+		expect(missing.stderr).toContain('refusing to start');
+	});
+
 	it('rejects bad input with stable error codes', () => {
 		const root = tempDir('cli-bad');
 		const env = { CODETRAIL_DATA_DIR: join(root, 'data'), CODETRAIL_LOCAL_ROOTS: join(root, 'allowed') };

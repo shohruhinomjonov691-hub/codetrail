@@ -15,11 +15,11 @@
 	</header>
 	<main class="layout">
 		<form class="ask" id="ask" autocomplete="off">
-			<label class="field">
-				<span>Loyiha</span>
-				<select id="project" required></select>
-			</label>
-			<p class="project-meta" id="project-meta"></p>
+			<div class="project-card">
+				<span class="field-label">Loyiha</span>
+				<strong id="project-name">—</strong>
+				<p class="project-meta" id="project-meta"></p>
+			</div>
 			<label class="field">
 				<span>Savol</span>
 				<textarea id="question" rows="3" maxlength="1000" required placeholder="Masalan: Request timeout qanday ishlaydi?"></textarea>
@@ -28,7 +28,7 @@
 				<button type="submit" id="search-btn" class="secondary">Qidirish</button>
 				<button type="button" id="explain-btn" class="primary">AI bilan tushuntirish</button>
 			</div>
-			<p class="hint">Qidiruv faqat tanlangan loyiha snapshot’ida lokal bajariladi. AI faqat “AI bilan tushuntirish” bosilganda chaqiriladi.</p>
+			<p class="hint">Qidiruv faqat shu loyihaning qayd etilgan snapshot’ida lokal bajariladi. AI faqat “AI bilan tushuntirish” bosilganda chaqiriladi va faqat shu loyiha kodiga tayanadi.</p>
 		</form>
 		<section class="results" aria-live="polite">
 			<div id="status"></div>

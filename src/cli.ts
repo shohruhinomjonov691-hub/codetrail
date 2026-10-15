@@ -12,7 +12,7 @@ import { loadFixture } from './eval/fixture.js';
 import { EVAL_MODES, renderMarkdown, runEvaluation, type EvalMode } from './eval/run.js';
 import { AnswerService } from './answer/service.js';
 import { createGenerationProvider, generationSettings } from './generation/config.js';
-import { createHttpServer } from './server/http.js';
+import { createHttpServer, parsePublicPin } from './server/http.js';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { join as joinPath } from 'node:path';
 
@@ -31,11 +31,11 @@ Usage:
                    [--selection rank|role-slots]
   codetrail eval   <project_id> <snapshot_id> <fixture.json> [--mode all|bm25|vector|hybrid|hybrid-role[,…]] [--k 8]
                    [--bm25-weights p,s,t,i] [--rrf-k n] [--pool n] [--out <dir>]
-  codetrail serve   [--host 127.0.0.1] [--port 8080]       HTTP API + developer UI
+  codetrail serve   [--host 127.0.0.1] [--port 8080]       public HTTP API + UI for CODETRAIL_PUBLIC_PIN only
   codetrail explain <project_id> <question>               one AI explanation (calls OpenAI if configured)
 
 Environment: CODETRAIL_DATA_DIR (default ./data), CODETRAIL_LOCAL_ROOTS (colon-separated),
-CODETRAIL_EMBED_URL, CODETRAIL_MODELS_DIR, CODETRAIL_PROVIDER_HOSTS (local embeddings), CODETRAIL_SERVE_PROJECTS,
+CODETRAIL_EMBED_URL, CODETRAIL_MODELS_DIR, CODETRAIL_PROVIDER_HOSTS (local embeddings), CODETRAIL_PUBLIC_PIN,
 CODETRAIL_OPENAI_API_KEY / CODETRAIL_OPENAI_MODEL / CODETRAIL_AI_* (answer generation; see .env.example).
 Output is JSON. File contents and secret values are never printed.`;
 
@@ -180,15 +180,21 @@ async function main(argv: string[]): Promise<number> {
 	if (group === 'serve' || group === 'explain') {
 		const settings = embeddingSettings();
 		const gen = generationSettings();
+		// The public server is pinned to one project + snapshot; `explain` (operator CLI) may address any indexed project.
+		const pin = group === 'serve' ? parsePublicPin(process.env.CODETRAIL_PUBLIC_PIN) : undefined;
 		const service = new AnswerService({
 			config,
 			recipe: settings.recipe,
 			embedding: await createEmbeddingProvider(config, settings),
 			generation: createGenerationProvider(gen),
 			limits: gen,
-			serve: (process.env.CODETRAIL_SERVE_PROJECTS ?? '').split(',').map((s) => s.trim()).filter(Boolean),
+			serve: pin ? [`${pin.project_id}:${pin.snapshot_id}`] : [],
 		});
 		const { served, skipped } = service.load();
+		if (pin && !(served.length === 1 && served[0]?.project_id === pin.project_id && served[0].snapshot_id === pin.snapshot_id)) {
+			service.close();
+			throw new CodeTrailError('UNKNOWN_SNAPSHOT', `Pinned ${pin.project_id}:${pin.snapshot_id} has no usable index (${skipped.map((s) => s.reason).join(', ') || 'not found'}); refusing to start`);
+		}
 		if (group === 'explain') {
 			const [projectId, question] = need([action, ...rest].filter((v): v is string => v !== undefined), 2) as [string, string];
 			try {
@@ -202,6 +208,7 @@ async function main(argv: string[]): Promise<number> {
 		const port = Number(one('port') ?? 8080);
 		if (!Number.isInteger(port) || port < 1 || port > 65535) throw new CodeTrailError('USAGE', '--port must be 1..65535');
 		const server = createHttpServer(service, {
+			...(pin ? { pinned: pin } : {}),
 			trustProxy: process.env.CODETRAIL_TRUST_PROXY === '1',
 			log: (line) => process.stderr.write(`${new Date().toISOString()} ${line}\n`),
 		});

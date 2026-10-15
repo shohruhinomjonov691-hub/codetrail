@@ -3,6 +3,7 @@ import { createServer, type IncomingMessage, type Server, type ServerResponse } 
 import { fileURLToPath } from 'node:url';
 import { AnswerService, SearchUnavailableError } from '../answer/service.js';
 import { CodeTrailError } from '../errors.js';
+import { assertId, assertSnapshotId } from '../ids.js';
 
 const MAX_BODY_BYTES = 8 * 1024;
 const STATIC: Record<string, { file: string; type: string }> = {
@@ -18,7 +19,25 @@ const SECURITY_HEADERS = {
 	'X-Frame-Options': 'DENY',
 };
 
+/** The one project and snapshot a public server answers for. */
+export interface PublicPin {
+	project_id: string;
+	snapshot_id: string;
+}
+
+/** Parses CODETRAIL_PUBLIC_PIN ("project:<24-hex snapshot id>"); both parts are required. */
+export function parsePublicPin(raw: string | undefined): PublicPin {
+	const [project, snapshot, extra] = (raw ?? '').trim().split(':');
+	if (!project || !snapshot || extra !== undefined) throw new CodeTrailError('USAGE', 'CODETRAIL_PUBLIC_PIN must be "<project_id>:<snapshot_id>"');
+	return { project_id: assertId('project', project), snapshot_id: assertSnapshotId(snapshot) };
+}
+
 export interface ServerOptions {
+	/**
+	 * Public mode: the server answers for this project and snapshot only. A request
+	 * may omit project_id/snapshot_id; any other value is refused (403).
+	 */
+	pinned?: PublicPin;
 	/** Directory with the static UI (default: <repo>/web). */
 	webDir?: string;
 	/** Use the first X-Forwarded-For address as the client id (only behind a trusted proxy). */
@@ -62,6 +81,14 @@ async function readJson(req: IncomingMessage): Promise<Record<string, unknown>> 
 	return parsed as Record<string, unknown>;
 }
 
+/** In public mode only the pinned project/snapshot may be addressed (omitting them means the pinned ones). */
+function scope(body: Record<string, unknown>, pinned: PublicPin | undefined): { project_id: unknown; snapshot_id: unknown } {
+	if (!pinned) return { project_id: body.project_id, snapshot_id: body.snapshot_id };
+	if (body.project_id !== undefined && body.project_id !== pinned.project_id) throw new HttpError(403, 'PROJECT_NOT_ALLOWED', 'This server answers only for its configured project');
+	if (body.snapshot_id !== undefined && body.snapshot_id !== pinned.snapshot_id) throw new HttpError(403, 'SNAPSHOT_NOT_ALLOWED', 'This server answers only for its configured snapshot');
+	return { project_id: pinned.project_id, snapshot_id: pinned.snapshot_id };
+}
+
 function errorStatus(err: unknown): { status: number; code: string; message: string } {
 	if (err instanceof HttpError) return { status: err.status, code: err.code, message: err.message };
 	if (err instanceof SearchUnavailableError) return { status: 503, code: 'SEARCH_UNAVAILABLE', message: 'Lokal qidiruv hozir ishlamayapti.' };
@@ -96,19 +123,21 @@ export function createHttpServer(service: AnswerService, options: ServerOptions 
 					return done(200);
 				}
 				if (req.method === 'GET' && path === '/api/projects') {
-					send(res, 200, { projects: service.list(), ai: { available: service.generationModel !== null, model: service.generationModel } });
+					const projects = options.pinned ? service.list().filter((p) => p.project_id === options.pinned!.project_id && p.snapshot_id === options.pinned!.snapshot_id) : service.list();
+					send(res, 200, { projects, pinned: Boolean(options.pinned), ai: { available: service.generationModel !== null, model: service.generationModel } });
 					return done(200);
 				}
 				if (path === '/api/search' || path === '/api/explain') {
 					if (req.method !== 'POST') throw new HttpError(405, 'METHOD_NOT_ALLOWED', 'Use POST');
 					const body = await readJson(req);
+					const target = scope(body, options.pinned);
 					if (path === '/api/search') {
-						send(res, 200, await service.search(body.project_id, body.question, body.snapshot_id));
+						send(res, 200, await service.search(target.project_id, body.question, target.snapshot_id));
 						return done(200);
 					}
 					const forwarded = options.trustProxy ? String(req.headers['x-forwarded-for'] ?? '').split(',')[0]?.trim() : '';
 					const client = forwarded || req.socket.remoteAddress || 'unknown';
-					const result = await service.explain(body.project_id, body.question, client, body.snapshot_id);
+					const result = await service.explain(target.project_id, body.question, client, target.snapshot_id);
 					note = `mode=${result.mode}${result.reason ? ` reason=${result.reason}` : ''}${result.cached ? ' cached' : ''}`;
 					send(res, 200, result);
 					return done(200);

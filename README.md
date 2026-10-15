@@ -1,25 +1,29 @@
 # CodeTrail
 
-CodeTrail is a codebase RAG for TypeScript/JavaScript projects. The goal is to answer questions about a repository with evidence: `source@commit:path:Lx-Ly` citations that can be checked.
+CodeTrail is a codebase RAG for TypeScript/JavaScript projects. It answers questions about a repository with evidence: every answer points to `source@commit:path:Lx-Ly` citations that can be checked against the exact code.
 
-**Status.** Implemented and tested:
+## At a glance
 
-- onboarding and exact-commit snapshots;
-- safety filters and secret scanning;
-- AST chunking;
-- a local embedding provider and a per-snapshot index;
-- hybrid (BM25 + vector + RRF) search;
-- an HTTP API with a developer UI;
-- AI explanations generated through the OpenAI API, with citations built and checked by the server.
-
-The OpenAI integration is tested against a mock provider. On 2026-10-15 **one** real request was made: GoTrip tuning question T4, model `gpt-6-luna`. It returned a valid two-claim answer whose citations matched the code; usage was 3228 input and 134 output tokens, about $0.0004 at list price. That single result is not a quality guarantee. The public server is pinned to the GoTrip frontend + backend snapshot. Docker files (CodeTrail + local embedding server) are ready and checked in local Docker; nothing is deployed to a server yet (see `DEPLOY.md`). On the tuning questions, retrieval misses the 0.80 Recall@8 target for GoTrip (0.656; see below).
-
-**Where data goes.**
-
-- **Embeddings and search are local.** They use a local `llama-server` (llama.cpp) running Qwen3-Embedding-0.6B. Plain search never contacts an external service.
-- **The AI explanation is the only external call.** It runs only when the user presses "AI bilan tushuntirish". The question and compact excerpts from the **selected project's** retrieved chunks (≈12k characters at most) are then sent to the OpenAI Responses API with `store: false`.
-- **Not sent:** whole files, other projects, the repository itself, or secret-filtered files.
-- **Local generation is not used.** The local generation experiments (D0–D0c) ended without a usable result and are archived in `experiments/local-generation/`.
+- **Public demo scope: GoTrip only.** The server is pinned to one snapshot of the GoTrip frontend and backend (`CODETRAIL_PUBLIC_PIN=gotrip:d75aaec9…`). Requests for any other project or snapshot are refused, and there is no way to upload or connect a repository from the UI. `sindresorhus/ky` is used only as an offline evaluation control corpus.
+- **Local retrieval.** Embeddings (Qwen3-Embedding-0.6B on a local llama.cpp server) and hybrid BM25 + vector search run locally. Plain search never calls an external service.
+- **OpenAI for explanations only.** Pressing **Explain with AI** sends the question and compact excerpts of the retrieved GoTrip chunks (≈12k characters at most) to the OpenAI Responses API with `store: false`; the model is set by configuration, default `gpt-6-luna`.
+  - The model may only cite excerpt lines. The server builds every citation (file, lines, commit, exact code) from the snapshot and rejects the whole answer if anything is invalid.
+  - When the evidence is insufficient, the answer says so instead of guessing.
+- **Fallback.** If the key is missing, quota or credit is exhausted, the provider rate-limits, times out or errors, or the answer fails validation, the local sources are still returned with a clear "AI explanation unavailable" notice. No generated text is invented.
+- **UI.** Dark theme, English and 한국어 (EN/KO switch). Example questions, citation cards with syntax-highlighted code, loading/empty/insufficient/fallback/error states, desktop and mobile layouts.
+- **Status.**
+  - Implemented and tested with mock providers: onboarding and exact-commit snapshots, safety filters and secret scanning, AST chunking, the local index and hybrid search, the HTTP API and UI, grounded OpenAI explanations, and the Docker setup.
+  - One real OpenAI request (GoTrip question T4, 2026-10-15) returned a valid two-claim answer whose citations matched the code: 3228 input and 134 output tokens, about $0.0004. A single result is not a quality guarantee.
+  - The Docker stack was built and checked in local Docker.
+  - **Not deployed to any server yet** (see `DEPLOY.md`).
+- **Real limitations:**
+  - Retrieval misses the 0.80 Recall@8 target on the GoTrip tuning questions: 0.656 by default, 0.688 with the experimental role-slots selection.
+  - A citation shows where a claim points, not that the claim is true.
+  - Korean questions can rank GoTrip's Korean locale files first.
+  - Prompt injection through repository text is reduced, not eliminated.
+  - Caches and rate limits are in memory per server process.
+  - Building the index on a small CPU takes long: about 106 minutes for GoTrip in a 2-CPU container.
+- **Local generation is not used.** The local LLM experiments (D0–D0c) ended without a usable result and are archived in `experiments/local-generation/`.
 
 ## What stage B does
 

@@ -15,7 +15,7 @@ CodeTrail is a codebase RAG for TypeScript/JavaScript projects. It answers quest
   - Implemented and tested with mock providers: onboarding and exact-commit snapshots, safety filters and secret scanning, AST chunking, the local index and hybrid search, the HTTP API and UI, grounded OpenAI explanations, and the Docker setup.
   - One real OpenAI request (GoTrip question T4, 2026-10-15) returned a valid two-claim answer whose citations matched the code: 3228 input and 134 output tokens, about $0.0004. A single result is not a quality guarantee.
   - The Docker stack was built and checked in local Docker.
-  - **Not deployed to any server yet** (see `DEPLOY.md`).
+  - **Live demo:** https://codetrail.gotrips.cloud (GoTrip snapshot only; index built on the server, 2026-10-16). Steps are in `DEPLOY.md`.
 - **Real limitations:**
   - Retrieval misses the 0.80 Recall@8 target on the GoTrip tuning questions: 0.656 by default, 0.688 with the experimental role-slots selection.
   - A citation shows where a claim points, not that the claim is true.

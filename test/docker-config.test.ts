@@ -86,3 +86,27 @@ describe('exposure and secrets', () => {
 		expect(embedDockerfile).toMatch(/^USER llama$/m);
 	});
 });
+
+describe('DEPLOY.md prepares data permissions for the non-root index job', () => {
+	const deploy = read('DEPLOY.md');
+	it('reads the real UID/GID from the image, chowns only the data dir, and checks write access as the job', () => {
+		expect(deploy).toMatch(/APP_UID=\$\(docker run --rm --entrypoint id "codetrail:\$\{CODETRAIL_IMAGE_TAG\}" -u\)/);
+		expect(deploy).toMatch(/APP_GID=\$\(docker run --rm --entrypoint id "codetrail:\$\{CODETRAIL_IMAGE_TAG\}" -g\)/);
+		expect(deploy).toMatch(/sudo chown -R "\$\{APP_UID\}:\$\{APP_GID\}" "\$\{CODETRAIL_DATA_HOST_DIR\}"/);
+		expect(deploy).toMatch(/run --rm --no-deps --entrypoint node codetrail-index/);
+		expect(deploy).toMatch(/fs\.writeFileSync\(f, ""\); fs\.unlinkSync\(f\); console\.log\("data writable"\)/);
+		// the permission step comes before the index build
+		expect(deploy.indexOf('data writable')).toBeLessThan(deploy.indexOf('docker compose --profile index run --rm codetrail-index\n'));
+	});
+
+	it('never widens permissions or runs the job as root; model and serving data stay read-only', () => {
+		// command lines only (the prose warns against chmod 777)
+		expect(deploy).not.toMatch(/^\s*(sudo\s+)?chmod\s+(-R\s+)?(0?777|a\+w|o\+w|a=rwx)/m);
+		expect(deploy).not.toMatch(/--user\s+(0|root)\b|user:\s*(0|root)\b/);
+		expect(compose).not.toMatch(/user:\s*(0|root)\b/);
+		const server = compose.slice(compose.indexOf('  codetrail:'), compose.indexOf('  codetrail-index:'));
+		expect(server).toMatch(/:\/data:ro"/);
+		expect(compose).not.toMatch(/:\/models:rw/);
+	});
+});
+

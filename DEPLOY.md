@@ -51,11 +51,35 @@ All paths are under a new directory, for example `/srv/codetrail`. Nothing else 
    export CODETRAIL_TRUST_PROXY=1     # only behind the reverse proxy
    ```
 6. **Build and index.** The index must be built on the server: a Mac-built index fails the 0.9999 embedding fingerprint check against the Linux CPU runtime, and that is intended. The index job uses one input per request and a 300 s request timeout (override with `CODETRAIL_EMBED_BATCH_SIZE` / `CODETRAIL_EMBED_DOC_TIMEOUT_MS`). On the development Mac's Docker (2 CPUs), the two largest GoTrip chunks took 121.5 s together. Server speed is not measured; expect a long run on a small CPU. If the job is interrupted, run it again: computed vectors are cached in groups and are not recomputed.
-   ```bash
-   cd /srv/codetrail/app
-   docker compose build
-   docker compose --profile index run --rm codetrail-index
-   ```
+   1. **Build the images:**
+      ```bash
+      cd /srv/codetrail/app
+      docker compose build
+      ```
+   2. **Give the index job write access to the CodeTrail data directory only.** The job runs as the image's non-root `node` user and mounts `/data` read-write. A bind mount does not change host permissions, so a directory copied in as `root` (mode `0755`) makes the job fail with `EACCES` on `/data/locks`. Read the real UID/GID from the image (do not assume `1000`), then hand over only this directory. Do not use `chmod 777` and do not run the job as root.
+      ```bash
+      APP_UID=$(docker run --rm --entrypoint id "codetrail:${CODETRAIL_IMAGE_TAG}" -u)
+      APP_GID=$(docker run --rm --entrypoint id "codetrail:${CODETRAIL_IMAGE_TAG}" -g)
+      echo "codetrail runs as ${APP_UID}:${APP_GID}"
+      sudo chown -R "${APP_UID}:${APP_GID}" "${CODETRAIL_DATA_HOST_DIR}"
+      sudo chmod -R u=rwX,g=rX,o= "${CODETRAIL_DATA_HOST_DIR}"
+      ```
+      `CODETRAIL_DATA_HOST_DIR` must be a directory used only by CodeTrail (`/srv/codetrail/data`). Never point it at a shared or parent directory.
+   3. **Check access as the index job itself** (same service, user and mounts; nothing is indexed). This must print `data writable` and `model readable`; stop if it does not.
+      ```bash
+      docker compose --profile index run --rm --no-deps --entrypoint node codetrail-index -e '
+        const fs = require("fs");
+        console.log("uid", process.getuid(), "gid", process.getgid());
+        const f = "/data/.codetrail-write-test-" + process.pid;
+        fs.writeFileSync(f, ""); fs.unlinkSync(f); console.log("data writable");
+        fs.accessSync("/models/models/Qwen3-Embedding-0.6B-Q8_0.gguf", fs.constants.R_OK); console.log("model readable");'
+      ```
+      The model directory stays read-only (`:ro`) for every container; it only needs to be readable, for example root-owned with mode `0755` (directories) and `0644` (files).
+   4. **Build the index:**
+      ```bash
+      docker compose --profile index run --rm codetrail-index
+      ```
+   After indexing, the server mounts `/data` read-only (`:ro`). It still needs read access, which the ownership above gives it.
 7. **Start and check:**
    ```bash
    docker compose up -d
@@ -70,7 +94,7 @@ All paths are under a new directory, for example `/srv/codetrail`. Nothing else 
 ## Update
 
 1. Check out the new reviewed commit and set `CODETRAIL_IMAGE_TAG=<new-sha>`.
-2. Run `docker compose build`, then `docker compose up -d`. If the snapshot or the embedding recipe changed, re-export the data and run the index job first.
+2. Run `docker compose build`, then `docker compose up -d`. If the snapshot or the embedding recipe changed, re-export the data, repeat the ownership and access check (step 6.2–6.3), and run the index job first.
 3. Repeat the checks from step 7.
 
 ## Rollback

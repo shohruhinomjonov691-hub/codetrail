@@ -34,14 +34,17 @@ export function tokenize(code, language) {
 	return out;
 }
 
-/** A <div class="code"> with one row per line: line number + highlighted text. */
-export function renderCode(code, language, firstLine) {
+/**
+ * A <div class="code"> with one row per line: line number + highlighted text.
+ * Rows inside `mark` ({start, end}, inclusive line numbers) get the class "hl".
+ */
+export function renderCode(code, language, firstLine, mark = null) {
 	const root = document.createElement('div');
 	root.className = 'code';
 	let n = firstLine;
 	const newRow = () => {
 		const row = document.createElement('div');
-		row.className = 'row';
+		row.className = mark && n >= mark.start && n <= mark.end ? 'row hl' : 'row';
 		const ln = document.createElement('span');
 		ln.className = 'ln';
 		ln.textContent = String(n++);

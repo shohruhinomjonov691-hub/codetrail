@@ -10,58 +10,108 @@
 	<script type="module" src="/app.js"></script>
 </head>
 <body>
-	<header class="topbar">
-		<div class="brand"><span class="brand-mark" aria-hidden="true">⌥</span><span>CodeTrail</span></div>
-		<div class="topbar-right">
-			<span class="pill project-pill"><span class="pill-label" data-i18n="project.label"></span><strong id="project-name">GoTrip</strong></span>
-			<span class="pill ai-pill" id="ai-pill" hidden></span>
-			<div class="lang-switch" role="group" data-i18n-aria="lang.label">
-				<button type="button" class="lang-btn" data-lang="en" lang="en">EN</button>
-				<button type="button" class="lang-btn" data-lang="ko" lang="ko">KO</button>
+	<div class="shell">
+		<aside class="sidebar" aria-label="CodeTrail">
+			<div class="brand">
+				<span class="brand-name">Code<span class="brand-accent">Trail</span></span>
+				<svg class="brand-mark" viewBox="0 0 32 32" aria-hidden="true"><path d="M7 26c4-1 4-6 8-8s6-3 7-7 2-5 3-6" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-dasharray="0.1 4.2"/><circle cx="7" cy="26" r="2.6"/><circle cx="25" cy="5" r="2.6"/></svg>
 			</div>
-		</div>
-	</header>
-
-	<main class="page">
-		<section class="ask-panel" id="ask-panel">
-			<div class="hero-text">
-				<h1 data-i18n="hero.title"></h1>
-				<p class="subtitle" data-i18n="hero.subtitle"></p>
-			</div>
-			<form id="ask" autocomplete="off" novalidate>
-				<label class="field-label" for="question" data-i18n="question.label"></label>
-				<textarea id="question" rows="3" maxlength="1000" data-i18n-placeholder="question.placeholder" aria-describedby="question-hint"></textarea>
-				<div class="ask-row">
-					<p class="hint" id="question-hint" data-i18n="question.hint"></p>
-					<div class="actions">
-						<button type="submit" id="search-btn" class="btn btn-secondary" data-i18n="action.search"></button>
-						<button type="button" id="explain-btn" class="btn btn-primary" data-i18n="action.explain" aria-describedby="ai-off-note"></button>
-					</div>
+			<div class="project-card">
+				<svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="10" width="14" height="10" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3" fill="none"/></svg>
+				<div>
+					<strong id="project-name" data-i18n="project.name"></strong>
+					<span class="muted" data-i18n="project.readonly"></span>
 				</div>
-				<p class="ai-off-note" id="ai-off-note" hidden data-i18n="action.explainDisabled"></p>
-			</form>
-			<div class="examples" id="examples">
-				<p class="field-label" id="examples-label" data-i18n="examples.label"></p>
-				<ul class="chips" id="chips" aria-labelledby="examples-label"></ul>
 			</div>
-			<p class="note" data-i18n="note.privacy"></p>
+			<nav class="nav" data-i18n-aria="nav.label">
+				<button type="button" class="nav-btn nav-new" id="new-chat">
+					<svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14" fill="none"/></svg>
+					<span data-i18n="nav.newChat"></span>
+				</button>
+				<button type="button" class="nav-btn" id="nav-ask" aria-current="page">
+					<svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12a8 8 0 1 1 3.3 6.5L4 20l1.2-3.6A8 8 0 0 1 4 12Z" fill="none"/></svg>
+					<span data-i18n="nav.ask"></span>
+				</button>
+				<button type="button" class="nav-btn" id="nav-how">
+					<svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 5.5C5.5 4 8.5 4 12 6c3.5-2 6.5-2 9-.5V19c-2.5-1.5-5.5-1.5-9 .5-3.5-2-6.5-2-9-.5Z M12 6v13.5" fill="none"/></svg>
+					<span data-i18n="nav.how"></span>
+				</button>
+			</nav>
 			<details class="source-details" id="source-details">
 				<summary data-i18n="details.summary"></summary>
 				<dl id="details-list"></dl>
 			</details>
-		</section>
+			<div class="lang-switch" role="group" data-i18n-aria="lang.label">
+				<svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9" fill="none"/><path d="M3 12h18M12 3c3 3.5 3 14.5 0 18M12 3c-3 3.5-3 14.5 0 18" fill="none"/></svg>
+				<button type="button" class="lang-btn" data-lang="en" lang="en">EN</button>
+				<span class="lang-sep" aria-hidden="true">|</span>
+				<button type="button" class="lang-btn" data-lang="ko" lang="ko">한국어</button>
+			</div>
+		</aside>
 
-		<section class="results" id="results" aria-live="polite">
-			<div id="status"></div>
-			<section id="answer" class="answer" hidden></section>
-			<section id="sources" hidden>
-				<div class="section-head">
-					<h2 data-i18n="sources.title"></h2>
-					<span class="muted" id="sources-count"></span>
-				</div>
-				<div id="source-list"></div>
+		<main class="main" id="main">
+			<div class="status-bar" role="group" data-i18n-aria="status.label">
+				<span class="status-item" id="search-status"><span class="dot"></span><span class="status-text"></span></span>
+				<span class="status-sep" aria-hidden="true"></span>
+				<span class="status-item" id="ai-status"><span class="dot"></span><span class="status-text"></span></span>
+			</div>
+
+			<section class="chat" id="chat" data-i18n-aria="chat.label" hidden>
+				<ol class="messages" id="messages"></ol>
 			</section>
-		</section>
-	</main>
+
+			<section class="hero" id="hero">
+				<svg class="hero-art" viewBox="0 0 600 170" aria-hidden="true">
+					<defs>
+						<linearGradient id="hill" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#2a2b5e"/><stop offset="1" stop-color="#0b1020" stop-opacity="0"/></linearGradient>
+					</defs>
+					<path d="M0 170 L120 95 L190 120 L300 30 L380 85 L450 60 L600 140 L600 170Z" fill="url(#hill)"/>
+					<path class="trail" d="M215 160 C260 150 300 140 330 128 S 380 110 372 92 S 400 70 392 52 S 410 30 398 14" fill="none"/>
+					<circle class="trail-dot" cx="330" cy="128" r="3.5"/><circle class="trail-dot" cx="372" cy="92" r="3.5"/><circle class="trail-dot" cx="392" cy="52" r="3.5"/><circle class="trail-dot glow" cx="398" cy="14" r="4.5"/>
+				</svg>
+				<h1><span data-i18n="hero.title.lead"></span> <span class="accent" data-i18n="hero.title.accent"></span></h1>
+				<p class="subtitle" data-i18n="hero.subtitle"></p>
+			</section>
+
+			<form class="composer" id="ask" autocomplete="off" novalidate>
+				<label class="sr-only" for="question" data-i18n="question.label"></label>
+				<div class="composer-box">
+					<svg class="icon composer-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12a8 8 0 1 1 3.3 6.5L4 20l1.2-3.6A8 8 0 0 1 4 12Z" fill="none"/></svg>
+					<textarea id="question" rows="1" maxlength="1000" data-i18n-placeholder="question.placeholder" aria-describedby="question-hint ai-off-note"></textarea>
+					<button type="button" id="search-btn" class="btn btn-ghost">
+						<svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.5" fill="none"/><path d="m16 16 4 4" fill="none"/></svg>
+						<span data-i18n="action.search"></span>
+					</button>
+					<button type="submit" id="send-btn" class="btn-send">
+						<svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12 20 4l-5 16-3-7Z" fill="none"/></svg>
+					</button>
+					<button type="button" id="stop-btn" class="btn btn-stop" hidden>
+						<svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="7" y="7" width="10" height="10" rx="1.5"/></svg>
+						<span data-i18n="action.stop"></span>
+					</button>
+				</div>
+				<p class="hint" id="question-hint"><span data-i18n="question.hint"></span><span class="memory-note" data-i18n="chat.memoryNote"></span></p>
+				<p class="ai-off-note" id="ai-off-note" hidden data-i18n="action.explainDisabled"></p>
+				<p class="form-error" id="form-error" role="alert" hidden></p>
+			</form>
+
+			<section class="home-extra" id="home-extra">
+				<h2 class="field-label" id="examples-label" data-i18n="examples.label"></h2>
+				<ul class="chips" id="chips" aria-labelledby="examples-label"></ul>
+				<h2 class="field-label" data-i18n="steps.label"></h2>
+				<ol class="steps">
+					<li><span class="step-n">1</span><strong data-i18n="steps.ask.title"></strong><p data-i18n="steps.ask.body"></p></li>
+					<li><span class="step-n">2</span><strong data-i18n="steps.find.title"></strong><p data-i18n="steps.find.body"></p></li>
+					<li><span class="step-n">3</span><strong data-i18n="steps.check.title"></strong><p data-i18n="steps.check.body"></p></li>
+				</ol>
+				<p class="note" data-i18n="note.privacy"></p>
+			</section>
+			<div class="page-status" id="page-status" aria-live="polite"></div>
+		</main>
+
+		<aside class="inspector" id="inspector" data-i18n-aria="inspector.label" tabindex="-1">
+			<div id="inspector-body"></div>
+		</aside>
+	</div>
 </body>
 </html>

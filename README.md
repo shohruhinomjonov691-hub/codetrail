@@ -10,7 +10,7 @@ CodeTrail is a codebase RAG for TypeScript/JavaScript projects. It answers quest
   - The model may only cite excerpt lines. The server builds every citation (file, lines, commit, exact code) from the snapshot and rejects the whole answer if anything is invalid.
   - When the evidence is insufficient, the answer says so instead of guessing.
 - **Fallback.** If the key is missing, quota or credit is exhausted, the provider rate-limits, times out or errors, or the answer fails validation, the local sources are still returned with a clear "AI explanation unavailable" notice. No generated text is invented.
-- **UI.** Dark theme, English and 한국어 (EN/KO switch). Example questions, citation cards with syntax-highlighted code, loading/empty/insufficient/fallback/error states, desktop and mobile layouts.
+- **UI.** Chat-style, dark navy/violet, English and 한국어 (EN/KO switch). Follow-up questions, a source inspector that opens each citation's exact snapshot code with the cited lines highlighted, a Stop button, loading/empty/insufficient/fallback/error states, desktop and mobile layouts.
 - **Status.**
   - Implemented and tested with mock providers: onboarding and exact-commit snapshots, safety filters and secret scanning, AST chunking, the local index and hybrid search, the HTTP API and UI, grounded OpenAI explanations, and the Docker setup.
   - One real OpenAI request (GoTrip question T4, 2026-10-15) returned a valid two-claim answer whose citations matched the code: 3228 input and 134 output tokens, about $0.0004. A single result is not a quality guarantee.
@@ -224,7 +224,11 @@ npm run cli -- explain gotrip "Where does AuthGuard get the token from and how i
 ```
 
 - **The public server is pinned to one project and snapshot.** `serve` needs `CODETRAIL_PUBLIC_PIN=<project>:<snapshot>` (the public demo: `gotrip:d75aaec9…`, the GoTrip frontend + backend snapshot) and refuses to start without it, or if that snapshot has no usable index. The UI shows that project only: there is no project picker and no way to upload or connect a repository. Projects and snapshots are created by the operator with the CLI (`project add`, `source add-*`, `snapshot create`, `index`); the internal modules stay multi-project (the operator CLI `explain <project>` can address any indexed project).
-- **Requests.** `POST /api/search` and `POST /api/explain` take `{question, language?}` (`language`: `en` | `ko`, default `en`); `project_id`/`snapshot_id` may be omitted and are then the pinned ones, any other value is refused with 403 (`PROJECT_NOT_ALLOWED` / `SNAPSHOT_NOT_ALLOWED`). Retrieval reads only the pinned project's index and the model only receives its excerpts.
+- **Requests.** `POST /api/search` and `POST /api/explain` take `{question, language?, previous_questions?}` (`language`: `en` | `ko`, default `en`); `project_id`/`snapshot_id` may be omitted and are then the pinned ones, any other value is refused with 403 (`PROJECT_NOT_ALLOWED` / `SNAPSHOT_NOT_ALLOWED`). Retrieval reads only the pinned project's index and the model only receives its excerpts.
+- **Follow-ups.** `previous_questions` holds at most 2 earlier questions of the conversation (strings, each ≤ 1000 characters; anything else is 400). Earlier answers are never accepted from the client, so nothing the client sends can pose as code evidence.
+  - Retrieval runs on the current question followed by the earlier questions (newest first) while the text stays within the 1000-character query limit; the response lists the ones used in `previous_questions`.
+  - The model sees them as "Earlier questions (context only)" and is told to use them only to resolve references such as "it"; the excerpts are still the only evidence.
+  - They are part of the answer-cache key. Limitation: an unrelated new question asked in the same conversation still mixes in the earlier questions' terms; "New chat" clears them.
 - **Search (`/api/search`)** returns the top 8 hybrid hits with `source@commit:path:Lx-Ly`, role and the exact chunk text from the snapshot. It never calls the model.
 - **AI explanation (`/api/explain`)** runs the same search and builds compact, line-numbered excerpts (at most `CODETRAIL_AI_MAX_CONTEXT_CHARS`, default 12 000). It then makes **one** OpenAI call with a strict JSON schema: `{status, claims[{text, source_id, lines}]}`.
   - The model names only an excerpt and a line range. The server copies the cited code, commit and path from the snapshot.
@@ -242,7 +246,7 @@ npm run cli -- explain gotrip "Where does AuthGuard get the token from and how i
   - no automatic retries and no fallback model;
   - at most `CODETRAIL_AI_CONCURRENCY` (2) parallel calls;
   - `CODETRAIL_AI_RATE_PER_MINUTE` (6) per client and `CODETRAIL_AI_DAILY_LIMIT` (200) per server;
-  - an in-memory cache of validated answers keyed by project, snapshot, index, model, prompt version and normalised question;
+  - an in-memory cache of validated answers keyed by project, snapshot, index, model, prompt version, language, earlier questions and the exact question;
   - output capped by `CODETRAIL_AI_MAX_OUTPUT_TOKENS` (2048, including reasoning).
 - **Model:** `CODETRAIL_OPENAI_MODEL`, default `gpt-6-luna`.
   - Choice: OpenAI's model page (checked 2026-10-15) recommends it for cost-sensitive, high-volume work and lists Structured Outputs and the Responses API for it.
@@ -256,11 +260,12 @@ npm run cli -- explain gotrip "Where does AuthGuard get the token from and how i
   - It is never written to responses or logs. Provider error messages are not echoed.
   - Logs record route, status, duration and mode/reason only: no question, prompt, code or key.
 - **UI** (`web/`, no framework, no external assets, strict CSP, dark theme):
-  - **Start screen.** "Explore the GoTrip codebase", a large question field, "Search code" (local only) and "Explain with AI".
-  - **Example chips.** Four example questions taken from the GoTrip tuning set, whose evidence exists in the code. A chip only fills the field; it never searches or calls the AI.
-  - **Results.** Once results appear, the question panel becomes compact and the answer and sources use the full width. Claim cards show server-quoted code; source cards show syntax-highlighted code with line numbers. Snapshot, commits and chunk count are in a collapsible "Source details".
-  - **AI status.** When AI is off, the header says so and "Explain with AI" is disabled; local search still works.
-  - **States.** Loading, empty, insufficient-evidence, fallback and search-error states are shown; keyboard focus is visible; text contrast meets WCAG AA. Long paths and symbols wrap instead of overflowing, on desktop and at 375 px.
+  - **Layout.** Sidebar (GoTrip codebase, read-only; New chat; How it works; EN/한국어), the conversation in the middle and a source inspector on the right. Below 1200 px the inspector opens as a sheet (Esc or × closes it and returns focus); below 768 px the sidebar becomes a top bar.
+  - **Start screen.** "Ask GoTrip's code", the question composer and four example questions from the GoTrip tuning set, whose evidence exists in the code. An example only fills the field; it never searches or calls the AI.
+  - **Conversation.** Question and answer messages with the composer at the bottom. Enter sends (Shift+Enter adds a line); "Search code" searches without AI. While a request runs, Stop cancels it (the server drops a queued AI call and returns its limiter slot). The conversation lives only in the tab's memory; nothing is stored, and up to two earlier questions are sent with a follow-up.
+  - **Citations.** Each claim has a "Source n" button. It opens that message's citation in the inspector: file, commit (copyable), symbol, line range and the chunk's exact snapshot text with the cited lines highlighted. Search results open the same way. Citations always belong to the message they were returned with.
+  - **AI status.** "Search ready / AI available" in the header. When AI is off, the send button searches and a note says so; local search keeps working.
+  - **States.** Loading, empty, insufficient-evidence, fallback, stopped and error states; keyboard focus is visible; long paths and code wrap or scroll inside their boxes, on desktop and at 375 px.
   - **Languages: English and 한국어** (EN / KO switch, default English, remembered in `localStorage`).
     - Every UI string, status, error, placeholder and example comes from one dictionary (`web/i18n.js`, identical keys).
     - The AI is asked to answer in the selected language; code, identifiers, paths and cited code are not translated.

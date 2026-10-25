@@ -412,7 +412,7 @@ describe('HTTP API (internal, unpinned module) and UI bundle', () => {
 		const page = await fetch(`${base}/`);
 		expect(page.status).toBe(200);
 		expect(page.headers.get('content-security-policy')).toContain("script-src 'self'");
-		expect(await page.text()).toContain('data-i18n="action.explain"');
+		expect(await page.text()).toContain('id="send-btn"');
 		for (const p of ['/app.js', '/highlight.js', '/i18n.js', '/errors.js', '/style.css']) expect((await fetch(`${base}${p}`)).status).toBe(200);
 		for (const p of ['/../package.json', '/web/app.js', '/.env', '/src/cli.ts']) expect((await fetch(`${base}${p}`)).status).toBe(404);
 	});
@@ -435,8 +435,17 @@ describe('HTTP API (internal, unpinned module) and UI bundle', () => {
 		const app = readFileSync(join(web, 'app.js'), 'utf8');
 		expect(html).not.toMatch(/<select|type="file"|repo(sitory)? ?url/i);
 		expect(app).not.toContain('project_id');
-		// the only request payload is the question and the answer language (snapshot_id is shown, never sent)
-		expect(app).toContain("{ question, language: state.lang }");
+		// the only request payload is the question, the answer language and earlier questions (snapshot_id is shown, never sent)
+		expect(app).toContain("{ question, language: state.lang, previous_questions }");
+		// earlier questions are the user's own messages only — earlier AI answers are never sent back
+		const prev = app.slice(app.indexOf('function previousQuestions'), app.indexOf('// ---------- conversation rendering'));
+		expect(prev).toContain(".filter((m) => m.role === 'user')");
+		expect(prev).toContain('.slice(-MAX_PREVIOUS)');
+		expect(prev).toContain('.map((m) => m.text)');
+		expect(app).toContain('const MAX_PREVIOUS = 2;');
+		// the conversation lives in memory only
+		expect(app).not.toMatch(/(local|session)Storage\.setItem\((?!LANG_KEY)/);
+		expect(app).not.toMatch(/indexedDB/);
 		expect(app).not.toMatch(/snapshot_id\s*:/);
 	});
 
@@ -624,9 +633,9 @@ describe('UI review fixes: chip semantics and translated API errors', () => {
 		const html = readFileSync(join(web, 'index.html'), 'utf8');
 		expect(html).toMatch(/<ul class="chips" id="chips"/);
 		expect(app()).not.toMatch(/role['"]?\s*,\s*['"]listitem/);
-		const chips = app().slice(app().indexOf('function renderChips'), app().indexOf('function renderAi'));
+		const chips = app().slice(app().indexOf('function renderChips'), app().indexOf('function renderStatus'));
 		expect(chips).toContain("el('li')");
-		expect(chips).toContain("el('button', 'chip', q)");
+		expect(chips).toContain("el('button', 'chip')");
 		expect(chips).not.toMatch(/setAttribute\('role'/);
 	});
 

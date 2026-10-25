@@ -104,8 +104,9 @@ function errorStatus(err: unknown): { status: number; code: string; message: str
 /**
  * HTTP API + static developer UI for one AnswerService:
  *   GET  /api/projects  served projects (operator-managed; there is no endpoint to add repositories)
- *   POST /api/search    {project_id, question, snapshot_id?} → local sources only, no AI call
- *   POST /api/explain   {project_id, question, snapshot_id?} → sources + grounded AI answer or a fallback
+ *   POST /api/search    {project_id, question, snapshot_id?, language?, previous_questions?} → local sources only, no AI call
+ *   POST /api/explain   {project_id, question, snapshot_id?, language?, previous_questions?} → sources + grounded AI answer or a fallback
+ * previous_questions: up to 2 earlier questions of the conversation (questions only, never answers).
  */
 export function createHttpServer(service: AnswerService, options: ServerOptions = {}): Server {
 	const webDir = options.webDir ?? fileURLToPath(new URL('../../web/', import.meta.url));
@@ -135,7 +136,7 @@ export function createHttpServer(service: AnswerService, options: ServerOptions 
 					const target = scope(body, options.pinned);
 					const language = parseLanguage(body.language); // only "en" | "ko" (default "en")
 					if (path === '/api/search') {
-						send(res, 200, await service.search(target.project_id, body.question, target.snapshot_id));
+						send(res, 200, await service.search(target.project_id, body.question, target.snapshot_id, body.previous_questions));
 						return done(200);
 					}
 					const forwarded = options.trustProxy ? String(req.headers['x-forwarded-for'] ?? '').split(',')[0]?.trim() : '';
@@ -145,7 +146,7 @@ export function createHttpServer(service: AnswerService, options: ServerOptions 
 					res.on('close', () => {
 						if (!res.writableEnded) cancel.abort();
 					});
-					const result = await service.explain(target.project_id, body.question, client, target.snapshot_id, cancel.signal, language);
+					const result = await service.explain(target.project_id, body.question, client, target.snapshot_id, cancel.signal, language, body.previous_questions);
 					note = `mode=${result.mode}${result.reason ? ` reason=${result.reason}` : ''}${result.cached ? ' cached' : ''}`;
 					send(res, 200, result);
 					return done(200);

@@ -18,7 +18,10 @@ CodeTrail is a codebase RAG for TypeScript/JavaScript projects. It answers quest
   - **Live demo:** https://codetrail.gotrips.cloud (GoTrip snapshot only; index built on the server, 2026-10-16). Steps are in `DEPLOY.md`.
 - **Real limitations:**
   - Retrieval misses the 0.80 Recall@8 target on the GoTrip tuning questions: 0.656 by default, 0.688 with the experimental role-slots selection.
-  - A citation shows where a claim points, not that the claim is true.
+  - A citation shows where a claim points, not that the claim is true. The validator checks that every cited line exists in the excerpt the model was shown; it does not check that the sentence is fully supported by those lines, so citation validation is not a guarantee of semantic correctness. The UI asks readers to check the cited code.
+  - Real OpenAI checks (2026-10-25, local, a handful of questions — not a benchmark):
+    - "How does a regular user become a guide?" passed the validator with 4 claims, but claim 1 says more than its cited lines show ("My Page" and the administrator review are in other excerpts), and the answer does not explain that the FAQ's "contact Support" differs from the in-app application flow.
+    - "What runs every night at 01:00, and what does it do?" is answered only partially (flagged `partial`): the schedule is cited, but `BatchService` is not retrieved, so what the job does is not shown.
   - Korean questions can rank GoTrip's Korean locale files first.
   - Prompt injection through repository text is reduced, not eliminated.
   - Caches and rate limits are in memory per server process.

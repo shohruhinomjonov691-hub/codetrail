@@ -388,10 +388,7 @@ function openSource(msgId, list, idx, trigger) {
 	state.trigger = trigger ?? null;
 	renderPanel();
 	markSelected();
-	if (narrow()) {
-		document.body.classList.add('panel-open');
-		focusPanel();
-	}
+	if (narrow()) openSheet();
 }
 
 function showPanel(kind, trigger) {
@@ -399,21 +396,65 @@ function showPanel(kind, trigger) {
 	state.trigger = trigger ?? null;
 	renderPanel();
 	markSelected();
-	document.body.classList.toggle('panel-open', narrow() && kind !== 'intro');
-	if (narrow() && kind !== 'intro') focusPanel();
+	if (narrow() && kind !== 'intro') openSheet();
+	else releaseSheet();
 }
 
-/** Moves focus into the sheet (`panel-open` makes it visible at once; only the slide-in is animated). */
-function focusPanel() {
+// On narrow screens the inspector is a modal sheet: the page behind it is inert, Tab stays
+// inside it and Esc closes it. On wide screens it is an ordinary, non-modal side column.
+let sheetKeydown = null;
+const sheetBackground = () => [document.querySelector('.sidebar'), $('main')];
+
+function sheetFocusables() {
+	return [...$('inspector').querySelectorAll('button:not(:disabled), a[href], [tabindex]:not([tabindex="-1"])')].filter((n) => n.getClientRects().length > 0);
+}
+
+function trapTab(e) {
+	const items = sheetFocusables();
+	const inspector = $('inspector');
+	e.preventDefault();
+	if (!items.length) return void inspector.focus();
+	const i = items.indexOf(document.activeElement);
+	if (e.shiftKey) (i <= 0 ? items[items.length - 1] : items[i - 1]).focus();
+	else (i < 0 || i === items.length - 1 ? items[0] : items[i + 1]).focus();
+}
+
+function openSheet() {
+	if (!sheetKeydown) {
+		for (const n of sheetBackground()) n.inert = true;
+		sheetKeydown = (e) => {
+			if (e.key === 'Escape') {
+				e.preventDefault();
+				closePanel();
+			} else if (e.key === 'Tab') trapTab(e);
+		};
+		document.addEventListener('keydown', sheetKeydown);
+		$('inspector').setAttribute('role', 'dialog');
+		$('inspector').setAttribute('aria-modal', 'true');
+	}
+	document.body.classList.add('panel-open'); // visible at once; only the slide-in is animated
 	$('inspector').focus();
 }
 
-function closePanel() {
+/** Ends the modal state (inert, key listener, dialog role); focus is left to the caller. */
+function releaseSheet() {
 	document.body.classList.remove('panel-open');
+	if (!sheetKeydown) return;
+	document.removeEventListener('keydown', sheetKeydown);
+	sheetKeydown = null;
+	for (const n of sheetBackground()) n.inert = false;
+	$('inspector').removeAttribute('role');
+	$('inspector').removeAttribute('aria-modal');
+}
+
+function closePanel() {
+	releaseSheet();
+	const p = state.panel;
 	const back = state.trigger;
 	state.trigger = null;
-	if (back?.isConnected) back.focus();
-	else $('question').focus();
+	// the button that opened the sheet; if a re-render replaced it, the same source's new button; else the composer
+	const same = p.kind === 'source' ? document.querySelector(`[data-sel="${selKey(p.msgId, p.list, p.idx)}"]`) : null;
+	(back?.isConnected ? back : same ?? $('question')).focus();
 }
 
 function panelHead(titleNode, extra = []) {
@@ -615,7 +656,7 @@ function newChat() {
 	state.messages = [];
 	state.panel = { kind: 'intro' };
 	state.formError = null;
-	document.body.classList.remove('panel-open');
+	releaseSheet();
 	$('question').placeholder = t('question.placeholder');
 	renderMessages();
 	renderPanel();
@@ -650,8 +691,9 @@ async function init() {
 			$('ask').requestSubmit();
 		}
 	});
-	document.addEventListener('keydown', (e) => {
-		if (e.key === 'Escape' && document.body.classList.contains('panel-open')) closePanel();
+	// widening the window turns the sheet back into the side column: drop the modal state
+	window.matchMedia('(max-width: 1199px)').addEventListener('change', (e) => {
+		if (!e.matches) releaseSheet();
 	});
 	applyStatic();
 	renderPanel();

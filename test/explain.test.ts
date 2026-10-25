@@ -639,6 +639,31 @@ describe('UI review fixes: chip semantics and translated API errors', () => {
 		expect(chips).not.toMatch(/setAttribute\('role'/);
 	});
 
+	it('the narrow-screen inspector sheet is modal: background inert, Tab trapped, state released on close/resize', () => {
+		const src = app();
+		const open = src.slice(src.indexOf('function openSheet'), src.indexOf('function releaseSheet'));
+		expect(open).toContain('n.inert = true');
+		expect(open).toContain("document.addEventListener('keydown', sheetKeydown)");
+		expect(open).toContain("if (e.key === 'Tab') trapTab(e)");
+		const release = src.slice(src.indexOf('function releaseSheet'), src.indexOf('function closePanel'));
+		expect(release).toContain('n.inert = false');
+		expect(release).toContain("document.removeEventListener('keydown', sheetKeydown)");
+		const trap = src.slice(src.indexOf('function trapTab'), src.indexOf('function openSheet'));
+		expect(trap).toContain('e.preventDefault()');
+		expect(trap).toContain('items[items.length - 1]');
+		// the background is the sidebar and the main column (composer and send button included)
+		expect(src).toContain("const sheetBackground = () => [document.querySelector('.sidebar'), $('main')];");
+		// closing returns focus to the opening Source button, or its re-rendered twin, else the composer
+		const close = src.slice(src.indexOf('function closePanel'), src.indexOf('function panelHead'));
+		expect(close).toContain('releaseSheet();');
+		expect(close).toMatch(/back\?\.isConnected \? back : same \?\? \$\('question'\)/);
+		// widening the window drops the modal state; New chat releases it too
+		expect(src).toMatch(/matchMedia\('\(max-width: 1199px\)'\)\.addEventListener\('change'[\s\S]{0,80}releaseSheet\(\)/);
+		expect(src.slice(src.indexOf('function newChat'), src.indexOf('function autoGrow'))).toContain('releaseSheet();');
+		// no global Escape handler outside the sheet
+		expect(src.match(/'Escape'/g)).toHaveLength(1);
+	});
+
 	it('API errors are shown from the dictionary only; raw server text never reaches the page', async () => {
 		const { errorKeys, KNOWN_ERROR_CODES } = (await import(join(web, 'errors.js'))) as { errorKeys: (c: string) => { titleKey: string; bodyKey: string }; KNOWN_ERROR_CODES: string[] };
 		const { DICT } = (await import(join(web, 'i18n.js'))) as { DICT: Record<string, Record<string, unknown>> };

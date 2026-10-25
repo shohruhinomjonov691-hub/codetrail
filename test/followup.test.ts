@@ -9,7 +9,7 @@ import type { AddressInfo } from 'node:net';
 import { join } from 'node:path';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 import { CITED_SCHEMA, validateCitedAnswer } from '../src/answer/grounded.js';
-import { AnswerService, fuseFollowUp, INSTRUCTIONS, MAX_PREVIOUS_QUESTIONS, messagesFor, parsePreviousQuestions, PROMPT_VERSION, retrievalQuery, type AnswerLimits } from '../src/answer/service.js';
+import { AnswerService, fuseFollowUp, INSTRUCTIONS, MAX_PREVIOUS_QUESTIONS, messagesFor, parsePreviousQuestions, PROMPT_VERSION, RequestCancelledError, retrievalQuery, SearchUnavailableError, type AnswerLimits } from '../src/answer/service.js';
 import type { RuntimeConfig } from '../src/config.js';
 import { LlamaCppEmbedding } from '../src/embedding/llamacpp.js';
 import { embeddingRecipeFromLock, type ModelsLock } from '../src/embedding/models.js';
@@ -338,11 +338,49 @@ describe('Codex review of 1848d84: no free model text shown or logged; context s
 	});
 });
 
+describe('Codex review of c7a06db: cancellation in the context search is not turned into SEARCH_UNAVAILABLE', () => {
+	const svc = (embedding: FailingContextEmbedding) => {
+		const s = new AnswerService({ config: cfg, recipe, embedding, generation: null, limits: LIMITS });
+		s.load();
+		return s;
+	};
+	const real = () => new LlamaCppEmbedding({ url: llama.url, allowedHosts: [], recipe, modelFile: FAKE_MODEL_FILE });
+
+	it('the own search returns hits, the context search is cancelled → RequestCancelledError itself', async () => {
+		const s = svc(new FailingContextEmbedding(real(), 'What does TokenGuard do?', () => new RequestCancelledError()));
+		try {
+			const err = await s.search('alpha', 'Where does it read the header?', undefined, ['What does TokenGuard do?']).catch((e: unknown) => e);
+			expect(err).toBeInstanceOf(RequestCancelledError);
+			expect(err).not.toBeInstanceOf(SearchUnavailableError);
+		} finally {
+			s.close();
+		}
+	});
+
+	it('unchanged: an ordinary context error keeps the own hits; an ordinary own error is SEARCH_UNAVAILABLE', async () => {
+		const ctx = svc(new FailingContextEmbedding(real(), 'What does TokenGuard do?'));
+		try {
+			const r = await ctx.search('alpha', 'Where does it read the header?', undefined, ['What does TokenGuard do?']);
+			expect(r.hits.length).toBeGreaterThan(0);
+			expect(r.previous_questions).toEqual([]);
+		} finally {
+			ctx.close();
+		}
+		const own = svc(new FailingContextEmbedding(real(), 'Where does it read the header?'));
+		try {
+			await expect(own.search('alpha', 'Where does it read the header?')).rejects.toBeInstanceOf(SearchUnavailableError);
+		} finally {
+			own.close();
+		}
+	});
+});
+
 /** Delegates to a real (fake-server) embedding, but fails any query that contains `marker` (the context query). */
 class FailingContextEmbedding {
 	constructor(
 		private readonly inner: LlamaCppEmbedding,
 		private readonly marker: string,
+		private readonly error: () => Error = () => new Error('context embedding failed'),
 	) {}
 	get recipe() {
 		return this.inner.recipe;
@@ -357,7 +395,7 @@ class FailingContextEmbedding {
 		return this.inner.countTokens(input, signal);
 	}
 	embed(inputs: string[], kind: 'query' | 'document', signal?: AbortSignal) {
-		if (kind === 'query' && inputs.some((i) => i.includes(this.marker))) return Promise.reject(new Error('context embedding failed'));
+		if (kind === 'query' && inputs.some((i) => i.includes(this.marker))) return Promise.reject(this.error());
 		return this.inner.embed(inputs, kind, signal);
 	}
 }

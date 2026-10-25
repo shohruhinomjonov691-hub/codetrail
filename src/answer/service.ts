@@ -445,6 +445,7 @@ export class AnswerService {
 				}
 			}
 		} catch (err) {
+			if (err instanceof RequestCancelledError) throw err; // the caller went away: not a search failure
 			p.session = null; // re-verify the embedding server on the next request
 			if (err instanceof CodeTrailError && err.code === 'INVALID_QUERY') throw err;
 			throw new SearchUnavailableError(err instanceof CodeTrailError ? `${err.code}: local search is unavailable` : 'local search is unavailable');

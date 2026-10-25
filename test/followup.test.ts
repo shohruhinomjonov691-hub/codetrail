@@ -8,7 +8,8 @@ import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { join } from 'node:path';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
-import { AnswerService, fuseFollowUp, INSTRUCTIONS, MAX_PREVIOUS_QUESTIONS, parsePreviousQuestions, PROMPT_VERSION, retrievalQuery, type AnswerLimits } from '../src/answer/service.js';
+import { CITED_SCHEMA, validateCitedAnswer } from '../src/answer/grounded.js';
+import { AnswerService, fuseFollowUp, INSTRUCTIONS, MAX_PREVIOUS_QUESTIONS, messagesFor, parsePreviousQuestions, PROMPT_VERSION, retrievalQuery, type AnswerLimits } from '../src/answer/service.js';
 import type { RuntimeConfig } from '../src/config.js';
 import { LlamaCppEmbedding } from '../src/embedding/llamacpp.js';
 import { embeddingRecipeFromLock, type ModelsLock } from '../src/embedding/models.js';
@@ -211,27 +212,16 @@ describe('answer-quality fix: follow-up fusion, partial answers, diagnostics', (
 		}
 	});
 
-	it('a partial answer carries the uncited "missing" note, also from the cache', async () => {
-		answer = { status: 'answered', claims: [{ text: 'TokenGuard reads the authorization header.', source_id: 'S1', lines: { start: 3, end: 3 } }], missing: 'How the token is verified is not in the excerpts.' };
-		const s = service();
-		try {
-			const r = await s.explain('alpha', 'How does TokenGuard verify the token?', 'c1');
-			expect(r).toMatchObject({ mode: 'answer', missing: 'How the token is verified is not in the excerpts.' });
-			expect((await s.explain('alpha', 'How does TokenGuard verify the token?', 'c1')).missing).toBe('How the token is verified is not in the excerpts.');
-		} finally {
-			s.close();
-		}
-	});
-
 	it('the prompt asks for a short explained answer, consecutive cited lines and an honest "missing" note', () => {
-		expect(PROMPT_VERSION).toBe('cited-lines-v4');
+		expect(PROMPT_VERSION).toBe('cited-lines-v5');
 		expect(INSTRUCTIONS).toContain('usually 2-5 claims');
 		expect(INSTRUCTIONS).toContain('never across a "…" gap');
-		expect(INSTRUCTIONS).toContain('"missing"');
+		expect(INSTRUCTIONS).toContain('"partial": true');
+		expect(INSTRUCTIONS).not.toContain('"missing"');
 	});
 
 	it('a rejected answer logs the validator reason for the operator, without the question or code', async () => {
-		answer = { status: 'answered', claims: [{ text: 'x', source_id: 'S1', lines: { start: 900, end: 900 } }], missing: '' };
+		answer = { status: 'answered', claims: [{ text: 'x', source_id: 'S1', lines: { start: 900, end: 900 } }], partial: false };
 		const lines: string[] = [];
 		const s = new AnswerService({
 			config: cfg,
@@ -245,10 +235,129 @@ describe('answer-quality fix: follow-up fusion, partial answers, diagnostics', (
 		try {
 			const q = 'Which header does TokenGuard read exactly?';
 			expect((await s.explain('alpha', q, 'c1')).reason).toBe('unverified');
-			expect(lines).toEqual(['explain unverified: claim 1: line 900 was not shown in S1']);
+			expect(lines).toEqual(['explain unverified: claim 1: line_not_shown 900 S1']);
 			expect(lines.join()).not.toContain('TokenGuard');
 		} finally {
 			s.close();
 		}
 	});
 });
+
+describe('Codex review of 1848d84: no free model text shown or logged; context search failure keeps own hits', () => {
+	const plain = (log?: (l: string) => void, embedding?: LlamaCppEmbedding | FailingContextEmbedding) => {
+		const s = new AnswerService({
+			config: cfg,
+			recipe,
+			embedding: embedding ?? new LlamaCppEmbedding({ url: llama.url, allowedHosts: [], recipe, modelFile: FAKE_MODEL_FILE }),
+			generation: new OpenAIResponsesProvider({ apiKey: KEY, model: 'gpt-6-luna', reasoningEffort: 'low', timeoutMs: 3000, baseUrl: openaiUrl }),
+			limits: LIMITS,
+			...(log ? { log } : {}),
+		});
+		s.load();
+		return s;
+	};
+	const claim = { text: 'TokenGuard reads the authorization header.', source_id: 'S1', lines: { start: 3, end: 3 } };
+
+	it('P2: a free-text "missing" sentence is rejected — never shown, never cached', async () => {
+		const lie = 'All user passwords are stored in plaintext.';
+		answer = { status: 'answered', claims: [claim], missing: lie };
+		const s = plain();
+		try {
+			const r = await s.explain('alpha', 'Which header does TokenGuard read?', 'c1');
+			expect(r).toMatchObject({ mode: 'fallback', reason: 'unverified', claims: [] });
+			expect(JSON.stringify(r)).not.toContain(lie);
+			const again = await s.explain('alpha', 'Which header does TokenGuard read?', 'c1');
+			expect(again.cached).toBe(false);
+			expect(JSON.stringify(again)).not.toContain(lie);
+		} finally {
+			s.close();
+		}
+	});
+
+	it('P2: a partial answer is a boolean flag; the note comes from the server EN/KO dictionary', async () => {
+		answer = { status: 'answered', claims: [claim], partial: true };
+		const s = plain();
+		try {
+			const en = await s.explain('alpha', 'How does TokenGuard verify the token?', 'c1');
+			expect(en).toMatchObject({ mode: 'answer', partial: true, message: messagesFor('en').partial });
+			const ko = await s.explain('alpha', 'How does TokenGuard verify the token?', 'c1', undefined, undefined, 'ko');
+			expect(ko).toMatchObject({ mode: 'answer', partial: true, message: messagesFor('ko').partial });
+			const cached = await s.explain('alpha', 'How does TokenGuard verify the token?', 'c1');
+			expect(cached).toMatchObject({ cached: true, partial: true, message: messagesFor('en').partial });
+			answer = { status: 'answered', claims: [claim], partial: false };
+			expect(await s.explain('alpha', 'Which header does TokenGuard read here?', 'c1')).toMatchObject({ mode: 'answer', partial: false, message: null });
+		} finally {
+			s.close();
+		}
+	});
+
+	it('P3: an explicit null or non-boolean flag rejects the answer; an absent flag means "not partial"', () => {
+		const ex = [{ id: 'S1', source_id: 'main', path: 'a.ts', lines: [{ line: 3, text: 'x' }] }];
+		const v = (x: unknown) => validateCitedAnswer(JSON.stringify(x), 'stop', ex);
+		expect(v({ status: 'answered', claims: [claim], partial: null }).ok).toBe(false);
+		expect(v({ status: 'answered', claims: [claim], partial: 'yes' }).ok).toBe(false);
+		expect(v({ status: 'answered', claims: [claim], partial: 1 }).ok).toBe(false);
+		expect(v({ status: 'answered', claims: [claim], missing: '' }).ok).toBe(false);
+		const absent = v({ status: 'answered', claims: [claim] });
+		expect(absent.ok && absent.answer.partial).toBe(false);
+		expect(CITED_SCHEMA.required).toEqual(['status', 'claims', 'partial']);
+	});
+
+	it('P2: diagnostics log only server reason codes and checked numbers — never model text', async () => {
+		const secret = 'SYNTHETIC_PRIVATE_QUESTION authorization header token';
+		answer = { status: 'answered', claims: [{ ...claim, source_id: secret }] };
+		const lines: string[] = [];
+		const s = plain((l) => lines.push(l));
+		try {
+			expect((await s.explain('alpha', 'Which header does TokenGuard read, really?', 'c1')).reason).toBe('unverified');
+			expect(lines).toEqual(['explain unverified: claim 1: unknown_excerpt']);
+			answer = { status: 'answered', claims: [{ ...claim, lines: { start: 900, end: 900 } }] };
+			await s.explain('alpha', 'Which header does TokenGuard read, once more?', 'c1');
+			expect(lines[1]).toBe('explain unverified: claim 1: line_not_shown 900 S1');
+			expect(lines.join('\n')).not.toMatch(/SYNTHETIC|authorization|header|TokenGuard/);
+		} finally {
+			s.close();
+		}
+	});
+
+	it('follow-up: when the context search fails, the own results are kept (and cancellation still propagates)', async () => {
+		const failing = new FailingContextEmbedding(new LlamaCppEmbedding({ url: llama.url, allowedHosts: [], recipe, modelFile: FAKE_MODEL_FILE }), 'What does TokenGuard do?');
+		const lines: string[] = [];
+		const s = plain((l) => lines.push(l), failing);
+		try {
+			const r = await s.search('alpha', 'Where does it read the header?', undefined, ['What does TokenGuard do?']);
+			expect(r.hits.length).toBeGreaterThan(0);
+			expect(r.previous_questions).toEqual([]); // context was not applied
+			expect(lines).toEqual(['search context_failed']);
+			const ac = new AbortController();
+			ac.abort();
+			await expect(s.explain('alpha', 'Where does it read the header?', 'c1', undefined, ac.signal, 'en', ['What does TokenGuard do?'])).rejects.toMatchObject({ name: 'RequestCancelledError' });
+		} finally {
+			s.close();
+		}
+	});
+});
+
+/** Delegates to a real (fake-server) embedding, but fails any query that contains `marker` (the context query). */
+class FailingContextEmbedding {
+	constructor(
+		private readonly inner: LlamaCppEmbedding,
+		private readonly marker: string,
+	) {}
+	get recipe() {
+		return this.inner.recipe;
+	}
+	verifyServer() {
+		return this.inner.verifyServer();
+	}
+	identity() {
+		return this.inner.identity();
+	}
+	countTokens(input: string, signal?: AbortSignal) {
+		return this.inner.countTokens(input, signal);
+	}
+	embed(inputs: string[], kind: 'query' | 'document', signal?: AbortSignal) {
+		if (kind === 'query' && inputs.some((i) => i.includes(this.marker))) return Promise.reject(new Error('context embedding failed'));
+		return this.inner.embed(inputs, kind, signal);
+	}
+}

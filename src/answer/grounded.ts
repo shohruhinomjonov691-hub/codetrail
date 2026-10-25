@@ -92,12 +92,12 @@ export const CITED_LIMITS = { maxClaims: 6, maxTextChars: 240, maxCitedLines: 12
 export const CITED_SCHEMA = {
 	type: 'object',
 	additionalProperties: false,
-	required: ['status', 'claims', 'missing'],
+	required: ['status', 'claims', 'partial'],
 	properties: {
 		status: { type: 'string', enum: ['answered', 'insufficient_evidence'] },
-		// What the question asks that the excerpts do not show ("" when nothing is missing). Never cited,
-		// so it may only name a gap; the UI shows it as "not confirmed by the retrieved code".
-		missing: { type: 'string' },
+		// true when the excerpts answer only part of the question. A flag only: the note shown to the
+		// user comes from the server's EN/KO dictionary, never from model text.
+		partial: { type: 'boolean' },
 		claims: {
 			type: 'array',
 			maxItems: CITED_LIMITS.maxClaims,
@@ -124,8 +124,8 @@ export const CITED_SCHEMA = {
 /**
  * Visible-answer budget for CITED_SCHEMA. Pessimistic per claim: 240 chars of
  * text at 2 chars/token = 120 tokens, plus ~50 tokens of keys, ids, numbers and
- * whitespace → ~170; 6 claims + `missing` (≤240 chars ≈ 120) + envelope ≈ 1180
- * tokens. 1536 leaves ~1.3× headroom. Reasoning tokens (if the model reasons) come on top; see
+ * whitespace → ~170; 6 claims + envelope (with the `partial` flag) ≈ 1070
+ * tokens. 1536 leaves ~1.4× headroom. Reasoning tokens (if the model reasons) come on top; see
  * generation settings. A response that stops on the length limit is "incomplete".
  */
 export const CITED_OUTPUT_BUDGET = 1536;
@@ -143,11 +143,16 @@ export interface CitedClaim {
 export interface CitedAnswer {
 	status: 'answered' | 'insufficient_evidence';
 	claims: CitedClaim[];
-	/** Uncited note naming what the excerpts do not show; "" when nothing is missing. */
-	missing: string;
+	/** The model reports that the excerpts answer only part of the question (a flag; no model text). */
+	partial: boolean;
 }
 
-export type CitedValidation = { ok: true; answer: CitedAnswer } | { ok: false; reasons: string[] };
+/**
+ * `reasons` are readable and may quote model output (e.g. an unknown excerpt id). `codes` hold only
+ * server-defined reason codes, server claim numbers, validated integers and server excerpt ids, so
+ * they are safe to log.
+ */
+export type CitedValidation = { ok: true; answer: CitedAnswer } | { ok: false; reasons: string[]; codes: string[] };
 
 /**
  * Fail-closed check of a model answer. Rejects the WHOLE answer if the generation
@@ -158,43 +163,50 @@ export type CitedValidation = { ok: true; answer: CitedAnswer } | { ok: false; r
  * server-built citation (path + exact cited text). Valid ≠ correct.
  */
 export function validateCitedAnswer(raw: string, finishReason: string | null, excerpts: readonly Excerpt[]): CitedValidation {
-	if (finishReason !== 'stop') return { ok: false, reasons: [`incomplete generation (finish_reason ${String(finishReason)})`] };
+	const reasons: string[] = [];
+	const codes: string[] = [];
+	const fail = (reason: string, code: string): void => {
+		reasons.push(reason);
+		codes.push(code);
+	};
+	const stop = (reason: string, code: string): CitedValidation => ({ ok: false, reasons: [reason], codes: [code] });
+	if (finishReason !== 'stop') return stop(`incomplete generation (finish_reason ${String(finishReason)})`, 'incomplete');
 	let parsed: unknown;
 	try {
 		parsed = JSON.parse(raw);
 	} catch {
-		return { ok: false, reasons: ['not valid JSON'] };
+		return stop('not valid JSON', 'invalid_json');
 	}
-	// `missing` is required by the schema; an answer without it is read as "nothing missing" (it carries no evidence).
+	// `partial` is required by the schema; an answer without it is read as "not partial". Present, it must be a boolean.
 	const keys = isObj(parsed) ? Object.keys(parsed).sort().join() : '';
-	if (keys !== 'claims,missing,status' && keys !== 'claims,status') return { ok: false, reasons: ['unexpected top-level shape'] };
+	if (keys !== 'claims,partial,status' && keys !== 'claims,status') return stop('unexpected top-level shape', 'bad_shape');
 	const { status, claims } = parsed as Record<string, unknown>;
-	const missing = (parsed as Record<string, unknown>).missing ?? '';
-	if (status !== 'answered' && status !== 'insufficient_evidence') return { ok: false, reasons: ['unknown status'] };
-	if (!Array.isArray(claims)) return { ok: false, reasons: ['claims is not an array'] };
-	const reasons: string[] = [];
-	if (typeof missing !== 'string' || missing.length > CITED_LIMITS.maxTextChars) reasons.push('invalid missing note');
-	if (status === 'answered' && claims.length === 0) reasons.push('answered without claims');
-	if (status === 'insufficient_evidence' && claims.length > 0) reasons.push('insufficient_evidence with claims');
-	if (claims.length > CITED_LIMITS.maxClaims) reasons.push(`more than ${CITED_LIMITS.maxClaims} claims`);
+	const hasPartial = keys === 'claims,partial,status';
+	const partial = (parsed as Record<string, unknown>).partial;
+	if (status !== 'answered' && status !== 'insufficient_evidence') return stop('unknown status', 'unknown_status');
+	if (!Array.isArray(claims)) return stop('claims is not an array', 'claims_not_array');
+	if (hasPartial && typeof partial !== 'boolean') fail('partial is not a boolean', 'invalid_partial');
+	if (status === 'answered' && claims.length === 0) fail('answered without claims', 'answered_without_claims');
+	if (status === 'insufficient_evidence' && claims.length > 0) fail('insufficient_evidence with claims', 'abstention_with_claims');
+	if (claims.length > CITED_LIMITS.maxClaims) fail(`more than ${CITED_LIMITS.maxClaims} claims`, 'too_many_claims');
 	const byId = new Map(excerpts.map((e) => [e.id, e]));
 	const out: CitedClaim[] = [];
 	claims.forEach((c: unknown, i) => {
 		const at = `claim ${i + 1}`;
-		if (!isObj(c) || Object.keys(c).sort().join() !== 'lines,source_id,text') return void reasons.push(`${at}: unexpected shape`);
+		if (!isObj(c) || Object.keys(c).sort().join() !== 'lines,source_id,text') return void fail(`${at}: unexpected shape`, `${at}: bad_shape`);
 		const { text, source_id, lines } = c;
-		if (typeof text !== 'string' || !text.trim() || text.length > CITED_LIMITS.maxTextChars) return void reasons.push(`${at}: invalid text`);
-		if (!isObj(lines) || !Number.isInteger(lines.start) || !Number.isInteger(lines.end)) return void reasons.push(`${at}: invalid lines`);
+		if (typeof text !== 'string' || !text.trim() || text.length > CITED_LIMITS.maxTextChars) return void fail(`${at}: invalid text`, `${at}: invalid_text`);
+		if (!isObj(lines) || !Number.isInteger(lines.start) || !Number.isInteger(lines.end)) return void fail(`${at}: invalid lines`, `${at}: invalid_lines`);
 		const start = lines.start as number;
 		const end = lines.end as number;
-		if (start > end) return void reasons.push(`${at}: start > end`);
-		if (end - start + 1 > CITED_LIMITS.maxCitedLines) return void reasons.push(`${at}: cites more than ${CITED_LIMITS.maxCitedLines} lines`);
+		if (start > end) return void fail(`${at}: start > end`, `${at}: reversed_range`);
+		if (end - start + 1 > CITED_LIMITS.maxCitedLines) return void fail(`${at}: cites more than ${CITED_LIMITS.maxCitedLines} lines`, `${at}: too_many_lines`);
 		const e = typeof source_id === 'string' ? byId.get(source_id) : undefined;
-		if (!e) return void reasons.push(`${at}: unknown excerpt ${String(source_id)}`);
+		if (!e) return void fail(`${at}: unknown excerpt ${String(source_id)}`, `${at}: unknown_excerpt`);
 		const shown = new Map(e.lines.map((l) => [l.line, l.text]));
-		for (let n = start; n <= end; n++) if (!shown.has(n)) return void reasons.push(`${at}: line ${n} was not shown in ${e.id}`);
+		for (let n = start; n <= end; n++) if (!shown.has(n)) return void fail(`${at}: line ${n} was not shown in ${e.id}`, `${at}: line_not_shown ${n} ${e.id}`);
 		const quote = Array.from({ length: end - start + 1 }, (_, k) => shown.get(start + k) as string).join('\n');
 		out.push({ text, source_id: e.id, lines: { start, end }, citation: { path: e.path, source: e.source_id, start, end, quote } });
 	});
-	return reasons.length ? { ok: false, reasons } : { ok: true, answer: { status, claims: out, missing: (missing as string).trim() } };
+	return reasons.length ? { ok: false, reasons, codes } : { ok: true, answer: { status, claims: out, partial: partial === true } };
 }

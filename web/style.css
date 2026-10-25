@@ -178,8 +178,7 @@ body.chatting .composer { position: sticky; bottom: 0; margin-top: auto; padding
 .inline-code { font-family: var(--mono); font-size: 0.88em; padding: 1px 5px; border-radius: 5px; background: var(--code-bg); border: 1px solid var(--border); overflow-wrap: anywhere; }
 .cite-chip { display: inline-grid; place-items: center; min-width: 24px; height: 24px; margin: 0 2px; padding: 0 6px; vertical-align: 2px; border: 1px solid var(--cite); border-radius: 999px; background: var(--cite-bg); color: var(--cite); font-size: 12.5px; font-weight: 700; line-height: 1; }
 .cite-chip:hover, .cite-chip.selected { background: rgba(242, 193, 78, 0.28); box-shadow: 0 0 0 1px var(--cite); }
-.missing-note { margin: 12px 0 0; padding: 8px 12px; border-left: 3px solid var(--warn-border); border-radius: 0 8px 8px 0; background: var(--warn-bg); color: #e6dcc6; font-size: 14px; }
-.missing-note strong { color: var(--warn); font-weight: 600; }
+.partial-note { margin: 12px 0 0; padding: 8px 12px; border-left: 3px solid var(--warn-border); border-radius: 0 8px 8px 0; background: var(--warn-bg); color: #e6dcc6; font-size: 14px; }
 .answer-foot { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; margin-top: 14px; font-size: 13px; }
 .link-btn { background: none; border: 0; padding: 6px 0; color: var(--accent-2); font-weight: 600; text-decoration: underline; text-underline-offset: 3px; }
 .answer-card .hit-list { margin-top: 12px; }

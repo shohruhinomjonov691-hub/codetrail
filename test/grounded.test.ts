@@ -65,23 +65,28 @@ describe('cited-lines answers — server-derived citations, fail-closed', () => 
 		expect(v(input, finish as string | null).ok).toBe(false);
 	});
 
-	it('"missing" names an uncited gap: required by the schema, bounded, trimmed, never a citation', () => {
-		expect(CITED_SCHEMA.required).toEqual(['status', 'claims', 'missing']);
-		const r = v({ ...ok, missing: '  The body of batchRollback is not in the excerpts.  ' });
-		expect(r.ok).toBe(true);
-		if (r.ok) expect(r.answer.missing).toBe('The body of batchRollback is not in the excerpts.');
-		const none = v(ok); // older/mock answers without the field read as "nothing missing"
-		if (none.ok) expect(none.answer.missing).toBe('');
-		expect(v({ ...ok, missing: 'x'.repeat(CITED_LIMITS.maxTextChars + 1) })).toEqual({ ok: false, reasons: ['invalid missing note'] });
-		expect(v({ ...ok, missing: 3 }).ok).toBe(false);
-		expect(v({ ...ok, missing: '', extra: 1 }).ok).toBe(false);
-		// a bad citation still rejects the whole answer, whatever the note says
-		expect(v({ status: 'answered', claims: [{ ...ok.claims[0], lines: { start: 23, end: 27 } }], missing: '' }).ok).toBe(false);
+	it('"partial" is a boolean flag: required by the schema, validated, never text', () => {
+		expect(CITED_SCHEMA.required).toEqual(['status', 'claims', 'partial']);
+		const r = v({ ...ok, partial: true });
+		expect(r.ok && r.answer.partial).toBe(true);
+		const none = v(ok); // older/mock answers without the field read as "not partial"
+		expect(none.ok && none.answer.partial).toBe(false);
+		expect(v({ ...ok, partial: 'true' })).toMatchObject({ ok: false, codes: ['invalid_partial'] });
+		expect(v({ ...ok, partial: false, extra: 1 }).ok).toBe(false);
+		// a bad citation still rejects the whole answer, whatever the flag says
+		expect(v({ status: 'answered', claims: [{ ...ok.claims[0], lines: { start: 23, end: 27 } }], partial: true }).ok).toBe(false);
+	});
+
+	it('codes carry no model text (reasons may)', () => {
+		const r = v({ status: 'answered', claims: [{ ...ok.claims[0], source_id: 'SECRET words here' }] });
+		expect(r).toMatchObject({ ok: false, codes: ['claim 1: unknown_excerpt'] });
+		expect(v(ok, 'some_model_reason')).toMatchObject({ ok: false, codes: ['incomplete'] });
+		expect(v('{"status":')).toMatchObject({ ok: false, codes: ['invalid_json'] });
 	});
 
 	it('one bad claim rejects the whole answer', () => {
 		const r = v({ status: 'answered', claims: [ok.claims[0], { ...ok.claims[0], source_id: 'S9' }] });
-		expect(r).toEqual({ ok: false, reasons: ['claim 2: unknown excerpt S9'] });
+		expect(r).toEqual({ ok: false, reasons: ['claim 2: unknown excerpt S9'], codes: ['claim 2: unknown_excerpt'] });
 	});
 
 	it('the schema bounds strings and arrays, and the output budget covers the bound', () => {

@@ -645,7 +645,9 @@ describe('UI review fixes: chip semantics and translated API errors', () => {
 		expect(card).toContain("el('button', 'cite-chip', String(idx + 1))");
 		expect(card).toContain("t('answer.sourceLabel', { n: idx + 1, loc })");
 		expect(card).toContain("openSource(msg.id, 'cite', idx, btn)");
-		expect(card).toContain("t('answer.missing')");
+		// partial answers show the server's dictionary note, never model text
+		expect(card).toContain("if (res.partial && res.message) card.append(el('p', 'partial-note', res.message));");
+		expect(card).not.toMatch(/res\.missing/);
 		expect(card).not.toMatch(/innerHTML/);
 		// run() no longer opens the first citation by itself
 		const run = src.slice(src.indexOf('async function run'), src.indexOf('function stop'));

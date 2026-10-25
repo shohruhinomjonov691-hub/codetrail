@@ -287,11 +287,8 @@ function answerCard(msg) {
 		body.append(sentence, document.createTextNode(' '));
 	});
 	card.append(body);
-	if (res.missing) {
-		const note = el('p', 'missing-note');
-		note.append(el('strong', '', t('answer.missing')), document.createTextNode(' '), richText(res.missing));
-		card.append(note);
-	}
+	// A flag from the model; the note is the server's fixed EN/KO text, never model text.
+	if (res.partial && res.message) card.append(el('p', 'partial-note', res.message));
 	const foot = el('footer', 'answer-foot');
 	foot.append(el('span', 'muted', `${t('answer.caveat')} · ${res.model ?? ''}${res.cached ? ` · ${t('answer.cached')}` : ''}`));
 	if (msg.hitSources.length) {

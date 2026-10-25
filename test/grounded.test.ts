@@ -26,6 +26,29 @@ describe('queryTerms / compactLines', () => {
 		expect(compactLines(Array(50).fill('x').join('\n'), 1, ['zzz'])).toHaveLength(EXCERPT_LIMITS.fallbackLines);
 	});
 
+	it('a chunk of at most maxLinesPerExcerpt lines is given whole: no gaps, blank lines and line numbers kept', () => {
+		// 14 lines like BecomeGuide.tsx L9–22: hits on lines 10 and 18 used to leave a gap at 13–15 and drop 21–22
+		const text = [
+			'/**', ' * Become a Guide', ' * --------------', ' * Front end for the existing workflow.', ' *', ' * agentRequestStatus is kept', ' * by the backend.', ' *',
+			' * Visible to USER accounts only.', ' */', '', 'import x from "y";', '', 'export {};',
+		].join('\n');
+		const lines = compactLines(text, 9, ['guide', 'user']);
+		expect(lines.map((l) => l.line)).toEqual(Array.from({ length: 14 }, (_, i) => 9 + i));
+		expect(lines.find((l) => l.line === 19)?.text).toBe('');
+		expect(lines.find((l) => l.line === 13)?.text).toBe(' *');
+		expect(renderExcerpt({ id: 'S4', source_id: 'frontend', path: 'BecomeGuide.tsx', lines })).not.toContain('…');
+		// exactly the limit is still whole; also without any hit
+		const thirty = Array.from({ length: EXCERPT_LIMITS.maxLinesPerExcerpt }, (_, i) => (i === 3 ? 'hit' : `l${i}`)).join('\n');
+		expect(compactLines(thirty, 1, ['hit'])).toHaveLength(EXCERPT_LIMITS.maxLinesPerExcerpt);
+		expect(compactLines(thirty, 1, ['zzz'])).toHaveLength(EXCERPT_LIMITS.maxLinesPerExcerpt);
+	});
+
+	it('larger chunks keep the windowed behaviour (one line over the limit)', () => {
+		const text = Array.from({ length: EXCERPT_LIMITS.maxLinesPerExcerpt + 1 }, (_, i) => (i === 2 || i === 25 ? 'hit' : `l${i}`)).join('\n');
+		expect(compactLines(text, 1, ['hit']).map((l) => l.line)).toEqual([1, 2, 3, 4, 5, 24, 25, 26, 27, 28]);
+		expect(compactLines(text, 1, ['zzz'])).toHaveLength(EXCERPT_LIMITS.fallbackLines);
+	});
+
 	it('renders gaps between kept lines', () => {
 		const e: Excerpt = { id: 'S1', source_id: 'lib', path: 'a.ts', lines: [{ line: 3, text: 'x' }, { line: 4, text: 'y' }, { line: 9, text: 'z' }] };
 		expect(renderExcerpt(e)).toBe('[S1] lib:a.ts\n3| x\n4| y\n…\n9| z');

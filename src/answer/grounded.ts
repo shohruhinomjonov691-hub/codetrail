@@ -32,13 +32,17 @@ export function queryTerms(question: string): string[] {
 }
 
 /**
- * Compact excerpt of one chunk: lines containing a query term, with
- * `contextLines` around them, merged when the gap is small, at most
- * `maxLinesPerExcerpt` lines (windows with more term hits first), then back in
- * line order. No hit → the first `fallbackLines` lines. Line numbers are kept.
+ * Compact excerpt of one chunk. A chunk of at most `maxLinesPerExcerpt` lines is
+ * kept whole, so the model sees no gap it could cite across. A larger chunk keeps
+ * lines containing a query term, with `contextLines` around them, merged when the
+ * gap is small, at most `maxLinesPerExcerpt` lines (windows with more term hits
+ * first), then back in line order; no hit → the first `fallbackLines` lines.
+ * Line numbers are kept. The caller's character budget still decides whether the
+ * excerpt is sent at all (it is never cut to fit).
  */
 export function compactLines(text: string, startLine: number, terms: readonly string[]): ExcerptLine[] {
 	const all = text.split('\n').map((t, i) => ({ line: startLine + i, text: t }));
+	if (all.length <= EXCERPT_LIMITS.maxLinesPerExcerpt) return all;
 	const hits = all.filter((l) => terms.some((t) => l.text.toLowerCase().includes(t))).map((l) => l.line);
 	if (hits.length === 0) return all.slice(0, EXCERPT_LIMITS.fallbackLines);
 	const { contextLines: c, mergeGap, maxLinesPerExcerpt } = EXCERPT_LIMITS;

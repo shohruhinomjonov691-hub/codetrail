@@ -338,6 +338,34 @@ describe('Codex review of 1848d84: no free model text shown or logged; context s
 	});
 });
 
+describe('small chunks are whole within the unchanged context budget', () => {
+	it('every excerpt sent is a whole small chunk or left out; the total stays within maxContextChars', async () => {
+		const budget = 260;
+		const s = new AnswerService({
+			config: cfg,
+			recipe,
+			embedding: new LlamaCppEmbedding({ url: llama.url, allowedHosts: [], recipe, modelFile: FAKE_MODEL_FILE }),
+			generation: new OpenAIResponsesProvider({ apiKey: KEY, model: 'gpt-6-luna', reasoningEffort: 'low', timeoutMs: 3000, baseUrl: openaiUrl }),
+			limits: { ...LIMITS, maxContextChars: budget },
+		});
+		s.load();
+		try {
+			const r = await s.explain('alpha', 'What does TokenGuard check in canActivate?', 'c1');
+			expect(r.context!.chars).toBeLessThanOrEqual(budget);
+			expect(r.context!.dropped).toBeGreaterThan(0); // the budget forced a drop instead of a cut
+			const input = inputs[0]!;
+			const sent = input.split('\n');
+			for (const h of r.hits) {
+				if (!input.includes(h.path)) continue;
+				// a sent chunk is complete: every one of its lines with its original number
+				h.code.split('\n').forEach((line, i) => expect(sent).toContain(`${h.start_line + i}| ${line}`));
+			}
+		} finally {
+			s.close();
+		}
+	});
+});
+
 describe('Codex review of c7a06db: cancellation in the context search is not turned into SEARCH_UNAVAILABLE', () => {
 	const svc = (embedding: FailingContextEmbedding) => {
 		const s = new AnswerService({ config: cfg, recipe, embedding, generation: null, limits: LIMITS });

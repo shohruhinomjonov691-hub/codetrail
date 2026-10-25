@@ -8,7 +8,7 @@ import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { join } from 'node:path';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
-import { AnswerService, MAX_PREVIOUS_QUESTIONS, parsePreviousQuestions, retrievalQuery, type AnswerLimits } from '../src/answer/service.js';
+import { AnswerService, fuseFollowUp, INSTRUCTIONS, MAX_PREVIOUS_QUESTIONS, parsePreviousQuestions, PROMPT_VERSION, retrievalQuery, type AnswerLimits } from '../src/answer/service.js';
 import type { RuntimeConfig } from '../src/config.js';
 import { LlamaCppEmbedding } from '../src/embedding/llamacpp.js';
 import { embeddingRecipeFromLock, type ModelsLock } from '../src/embedding/models.js';
@@ -183,6 +183,71 @@ describe('HTTP: previous_questions', () => {
 		} finally {
 			http.closeAllConnections();
 			await new Promise<void>((resolve) => void http.close(() => resolve()));
+			s.close();
+		}
+	});
+});
+
+describe('answer-quality fix: follow-up fusion, partial answers, diagnostics', () => {
+	const hit = (id: string) => ({ rank: 0, chunk_id: id, source_id: 'main', commit: 'c', path: `${id}.ts`, start_line: 1, end_line: 2, symbol: null, kind: 'function', role: 'implementation' as const, citation: '', scores: { rrf: 0, bm25_rank: null, vector_rank: null, vector_cosine: null } });
+
+	it('fusion interleaves both lists (equal RRF weight); a hit in both ranks first', () => {
+		const own = ['guide', 'notify', 'faq'].map(hit);
+		const withContext = ['auth', 'roles', 'guide'].map(hit);
+		const fused = fuseFollowUp(own, withContext, 4);
+		// guide is in both; then context #1 (1/31) before own #2 (1/32); ties prefer the current question's own hit
+		expect(fused.map((h) => h.chunk_id)).toEqual(['guide', 'auth', 'notify', 'roles']);
+		expect(fused.map((h) => h.rank)).toEqual([1, 2, 3, 4]);
+	});
+
+	it('an unrelated new question in the same conversation keeps its own results first', async () => {
+		const s = service();
+		try {
+			const r = await s.search('alpha', 'What does nightlyCleanup return?', undefined, ['What does TokenGuard do?']);
+			expect(r.previous_questions).toEqual(['What does TokenGuard do?']);
+			expect(r.hits[0]?.path).toBe('src/cron.ts');
+		} finally {
+			s.close();
+		}
+	});
+
+	it('a partial answer carries the uncited "missing" note, also from the cache', async () => {
+		answer = { status: 'answered', claims: [{ text: 'TokenGuard reads the authorization header.', source_id: 'S1', lines: { start: 3, end: 3 } }], missing: 'How the token is verified is not in the excerpts.' };
+		const s = service();
+		try {
+			const r = await s.explain('alpha', 'How does TokenGuard verify the token?', 'c1');
+			expect(r).toMatchObject({ mode: 'answer', missing: 'How the token is verified is not in the excerpts.' });
+			expect((await s.explain('alpha', 'How does TokenGuard verify the token?', 'c1')).missing).toBe('How the token is verified is not in the excerpts.');
+		} finally {
+			s.close();
+		}
+	});
+
+	it('the prompt asks for a short explained answer, consecutive cited lines and an honest "missing" note', () => {
+		expect(PROMPT_VERSION).toBe('cited-lines-v4');
+		expect(INSTRUCTIONS).toContain('usually 2-5 claims');
+		expect(INSTRUCTIONS).toContain('never across a "…" gap');
+		expect(INSTRUCTIONS).toContain('"missing"');
+	});
+
+	it('a rejected answer logs the validator reason for the operator, without the question or code', async () => {
+		answer = { status: 'answered', claims: [{ text: 'x', source_id: 'S1', lines: { start: 900, end: 900 } }], missing: '' };
+		const lines: string[] = [];
+		const s = new AnswerService({
+			config: cfg,
+			recipe,
+			embedding: new LlamaCppEmbedding({ url: llama.url, allowedHosts: [], recipe, modelFile: FAKE_MODEL_FILE }),
+			generation: new OpenAIResponsesProvider({ apiKey: KEY, model: 'gpt-6-luna', reasoningEffort: 'low', timeoutMs: 3000, baseUrl: openaiUrl }),
+			limits: LIMITS,
+			log: (l) => lines.push(l),
+		});
+		s.load();
+		try {
+			const q = 'Which header does TokenGuard read exactly?';
+			expect((await s.explain('alpha', q, 'c1')).reason).toBe('unverified');
+			expect(lines).toEqual(['explain unverified: claim 1: line 900 was not shown in S1']);
+			expect(lines.join()).not.toContain('TokenGuard');
+		} finally {
 			s.close();
 		}
 	});

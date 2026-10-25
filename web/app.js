@@ -257,35 +257,43 @@ function hitList(msg) {
 	return ul;
 }
 
+/** Text with `backtick` spans shown as inline code (DOM nodes only; never HTML). */
+function richText(text) {
+	const frag = document.createDocumentFragment();
+	text.split('`').forEach((part, i) => {
+		if (part) frag.append(i % 2 ? el('code', 'inline-code', part) : document.createTextNode(part));
+	});
+	return frag;
+}
+
 function answerCard(msg) {
 	const res = msg.res;
 	const card = el('article', 'answer-card');
-	const head = el('header', 'answer-head');
-	const badge = el('span', 'answer-badge');
-	badge.append(icon('sparkle'));
-	const titles = el('div');
-	const h = el('h3', 'answer-title');
-	h.append(el('span', '', t('answer.title.lead')), document.createTextNode(' '), el('span', 'accent', t('answer.title.accent')));
-	titles.append(h, el('p', 'caveat', t('answer.caveat')));
-	head.append(badge, titles);
-	card.append(head);
 	if (res.language !== state.lang) card.append(el('p', 'lang-note', t('answer.langNote')));
-	const list = el('ol', 'claims');
+	// One short answer: each sentence followed by a compact button for its source.
+	const body = el('p', 'answer-text');
 	res.claims.forEach((c, i) => {
 		const idx = msg.cite.claimSource[i];
 		const src = msg.cite.sources[idx];
-		const item = el('li', 'claim');
-		const btn = el('button', 'cite-btn');
+		const loc = `${src.path.split('/').pop()}:L${src.mark.start}–${src.mark.end}`;
+		const btn = el('button', 'cite-chip', String(idx + 1));
 		btn.type = 'button';
 		btn.dataset.sel = selKey(msg.id, 'cite', idx);
-		btn.append(icon('file', 'icon icon-sm'), el('span', 'cite-n', t('answer.source', { n: idx + 1 })), el('span', 'cite-loc mono', `${src.path.split('/').pop()}:L${src.mark.start}–${src.mark.end}`), icon('chevronRight', 'icon icon-sm'));
+		btn.title = loc;
+		btn.setAttribute('aria-label', t('answer.sourceLabel', { n: idx + 1, loc }));
 		btn.addEventListener('click', () => openSource(msg.id, 'cite', idx, btn));
-		item.append(el('p', 'claim-text', c.text), btn);
-		list.append(item);
+		const sentence = el('span', 'claim');
+		sentence.append(richText(c.text), document.createTextNode(' '), btn);
+		body.append(sentence, document.createTextNode(' '));
 	});
-	card.append(list);
+	card.append(body);
+	if (res.missing) {
+		const note = el('p', 'missing-note');
+		note.append(el('strong', '', t('answer.missing')), document.createTextNode(' '), richText(res.missing));
+		card.append(note);
+	}
 	const foot = el('footer', 'answer-foot');
-	foot.append(el('span', 'muted mono', `${res.model ?? ''}${res.cached ? ` · ${t('answer.cached')}` : ''}`));
+	foot.append(el('span', 'muted', `${t('answer.caveat')} · ${res.model ?? ''}${res.cached ? ` · ${t('answer.cached')}` : ''}`));
 	if (msg.hitSources.length) {
 		const toggle = el('button', 'link-btn', t(msg.showHits ? 'sources.hide' : 'sources.show', { n: msg.hitSources.length }));
 		toggle.type = 'button';
@@ -638,11 +646,6 @@ async function run(kind) {
 		renderStatus();
 		updateMessage(reply);
 		$(`msg-${user.id}`)?.scrollIntoView({ block: 'start' });
-		if (reply.kind === 'result' && reply.res.mode === 'answer' && !narrow()) {
-			state.panel = { kind: 'source', msgId: reply.id, list: 'cite', idx: 0 };
-			renderPanel();
-			markSelected();
-		}
 	}
 }
 

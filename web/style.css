@@ -172,18 +172,14 @@ body.chatting .composer { position: sticky; bottom: 0; margin-top: auto; padding
 @keyframes spin { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) { .spinner { animation: none; } }
 
-.answer-card { padding: 20px; border: 1px solid #3d3f8f; border-radius: 18px; background: linear-gradient(180deg, #141a3a, #10152d); box-shadow: 0 0 0 1px rgba(143, 140, 255, 0.12), 0 12px 40px rgba(50, 50, 160, 0.2); }
-.answer-head { display: flex; gap: 14px; align-items: flex-start; }
-.answer-badge { display: grid; place-items: center; width: 46px; height: 46px; flex: none; border-radius: 50%; border: 1px solid #4b4fb8; background: #1d2252; color: #fff; }
-.answer-title { margin: 0; font-size: clamp(20px, 2.4vw, 26px); letter-spacing: -0.01em; }
-.caveat { margin: 4px 0 0; color: var(--muted); font-size: 14px; }
-.lang-note { margin: 12px 0 0; padding: 8px 12px; border-radius: 8px; background: var(--info-bg); color: var(--muted); font-size: 13px; }
-.claims { list-style: none; margin: 16px 0 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
-.claim { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px 16px; padding: 12px 14px; border: 1px solid var(--border); border-radius: 12px; background: rgba(8, 12, 25, 0.45); }
-.claim-text { flex: 1 1 320px; margin: 0; }
-.cite-btn { display: inline-flex; align-items: center; gap: 8px; max-width: 100%; min-height: 40px; padding: 6px 12px; border: 1px solid var(--cite); border-radius: 999px; background: var(--cite-bg); color: var(--cite); font-size: 13.5px; font-weight: 600; }
-.cite-btn:hover, .cite-btn.selected { background: rgba(242, 193, 78, 0.22); box-shadow: 0 0 0 1px var(--cite); }
-.cite-loc { color: #e9d9ad; font-weight: 400; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.answer-card { padding: 16px 18px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--panel); }
+.lang-note { margin: 0 0 10px; padding: 8px 12px; border-radius: 8px; background: var(--info-bg); color: var(--muted); font-size: 13px; }
+.answer-text { margin: 0; font-size: 16px; line-height: 1.7; }
+.inline-code { font-family: var(--mono); font-size: 0.88em; padding: 1px 5px; border-radius: 5px; background: var(--code-bg); border: 1px solid var(--border); overflow-wrap: anywhere; }
+.cite-chip { display: inline-grid; place-items: center; min-width: 24px; height: 24px; margin: 0 2px; padding: 0 6px; vertical-align: 2px; border: 1px solid var(--cite); border-radius: 999px; background: var(--cite-bg); color: var(--cite); font-size: 12.5px; font-weight: 700; line-height: 1; }
+.cite-chip:hover, .cite-chip.selected { background: rgba(242, 193, 78, 0.28); box-shadow: 0 0 0 1px var(--cite); }
+.missing-note { margin: 12px 0 0; padding: 8px 12px; border-left: 3px solid var(--warn-border); border-radius: 0 8px 8px 0; background: var(--warn-bg); color: #e6dcc6; font-size: 14px; }
+.missing-note strong { color: var(--warn); font-weight: 600; }
 .answer-foot { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; margin-top: 14px; font-size: 13px; }
 .link-btn { background: none; border: 0; padding: 6px 0; color: var(--accent-2); font-weight: 600; text-decoration: underline; text-underline-offset: 3px; }
 .answer-card .hit-list { margin-top: 12px; }
@@ -293,10 +289,7 @@ body.chatting .composer { position: sticky; bottom: 0; margin-top: auto; padding
 	.chips, .steps { grid-template-columns: minmax(0, 1fr); }
 	.msg-user { padding: 12px; }
 	.avatar { width: 30px; height: 30px; }
-	.answer-card { padding: 14px; border-radius: 14px; }
-	.answer-badge { width: 36px; height: 36px; }
-	.answer-badge .icon { width: 18px; height: 18px; }
-	.cite-loc { display: none; }
+	.answer-card { padding: 14px; }
 	.hit-row { gap: 10px; padding: 12px; }
 	.hit-file, .hit-go { display: none; }
 	.code { font-size: 12px; }

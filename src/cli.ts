@@ -189,6 +189,7 @@ async function main(argv: string[]): Promise<number> {
 			generation: createGenerationProvider(gen),
 			limits: gen,
 			serve: pin ? [`${pin.project_id}:${pin.snapshot_id}`] : [],
+			log: (line) => process.stderr.write(`${new Date().toISOString()} ${line}\n`),
 		});
 		const { served, skipped } = service.load();
 		if (pin && !(served.length === 1 && served[0]?.project_id === pin.project_id && served[0].snapshot_id === pin.snapshot_id)) {

@@ -639,6 +639,20 @@ describe('UI review fixes: chip semantics and translated API errors', () => {
 		expect(chips).not.toMatch(/setAttribute\('role'/);
 	});
 
+	it('answers read as text with compact source buttons; the inspector opens only on click', () => {
+		const src = app();
+		const card = src.slice(src.indexOf('function answerCard'), src.indexOf('function resultBody'));
+		expect(card).toContain("el('button', 'cite-chip', String(idx + 1))");
+		expect(card).toContain("t('answer.sourceLabel', { n: idx + 1, loc })");
+		expect(card).toContain("openSource(msg.id, 'cite', idx, btn)");
+		expect(card).toContain("t('answer.missing')");
+		expect(card).not.toMatch(/innerHTML/);
+		// run() no longer opens the first citation by itself
+		const run = src.slice(src.indexOf('async function run'), src.indexOf('function stop'));
+		expect(run).not.toContain('openSource');
+		expect(run).not.toMatch(/state\.panel = \{ kind: 'source'/);
+	});
+
 	it('the narrow-screen inspector sheet is modal: background inert, Tab trapped, state released on close/resize', () => {
 		const src = app();
 		const open = src.slice(src.indexOf('function openSheet'), src.indexOf('function releaseSheet'));

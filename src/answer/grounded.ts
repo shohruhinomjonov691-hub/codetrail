@@ -92,9 +92,12 @@ export const CITED_LIMITS = { maxClaims: 6, maxTextChars: 240, maxCitedLines: 12
 export const CITED_SCHEMA = {
 	type: 'object',
 	additionalProperties: false,
-	required: ['status', 'claims'],
+	required: ['status', 'claims', 'missing'],
 	properties: {
 		status: { type: 'string', enum: ['answered', 'insufficient_evidence'] },
+		// What the question asks that the excerpts do not show ("" when nothing is missing). Never cited,
+		// so it may only name a gap; the UI shows it as "not confirmed by the retrieved code".
+		missing: { type: 'string' },
 		claims: {
 			type: 'array',
 			maxItems: CITED_LIMITS.maxClaims,
@@ -121,8 +124,8 @@ export const CITED_SCHEMA = {
 /**
  * Visible-answer budget for CITED_SCHEMA. Pessimistic per claim: 240 chars of
  * text at 2 chars/token = 120 tokens, plus ~50 tokens of keys, ids, numbers and
- * whitespace → ~170; 6 claims + envelope ≈ 1060 tokens. 1536 leaves ~1.45×
- * headroom. Reasoning tokens (if the model reasons) come on top; see
+ * whitespace → ~170; 6 claims + `missing` (≤240 chars ≈ 120) + envelope ≈ 1180
+ * tokens. 1536 leaves ~1.3× headroom. Reasoning tokens (if the model reasons) come on top; see
  * generation settings. A response that stops on the length limit is "incomplete".
  */
 export const CITED_OUTPUT_BUDGET = 1536;
@@ -140,6 +143,8 @@ export interface CitedClaim {
 export interface CitedAnswer {
 	status: 'answered' | 'insufficient_evidence';
 	claims: CitedClaim[];
+	/** Uncited note naming what the excerpts do not show; "" when nothing is missing. */
+	missing: string;
 }
 
 export type CitedValidation = { ok: true; answer: CitedAnswer } | { ok: false; reasons: string[] };
@@ -160,11 +165,15 @@ export function validateCitedAnswer(raw: string, finishReason: string | null, ex
 	} catch {
 		return { ok: false, reasons: ['not valid JSON'] };
 	}
-	if (!isObj(parsed) || Object.keys(parsed).sort().join() !== 'claims,status') return { ok: false, reasons: ['unexpected top-level shape'] };
-	const { status, claims } = parsed;
+	// `missing` is required by the schema; an answer without it is read as "nothing missing" (it carries no evidence).
+	const keys = isObj(parsed) ? Object.keys(parsed).sort().join() : '';
+	if (keys !== 'claims,missing,status' && keys !== 'claims,status') return { ok: false, reasons: ['unexpected top-level shape'] };
+	const { status, claims } = parsed as Record<string, unknown>;
+	const missing = (parsed as Record<string, unknown>).missing ?? '';
 	if (status !== 'answered' && status !== 'insufficient_evidence') return { ok: false, reasons: ['unknown status'] };
 	if (!Array.isArray(claims)) return { ok: false, reasons: ['claims is not an array'] };
 	const reasons: string[] = [];
+	if (typeof missing !== 'string' || missing.length > CITED_LIMITS.maxTextChars) reasons.push('invalid missing note');
 	if (status === 'answered' && claims.length === 0) reasons.push('answered without claims');
 	if (status === 'insufficient_evidence' && claims.length > 0) reasons.push('insufficient_evidence with claims');
 	if (claims.length > CITED_LIMITS.maxClaims) reasons.push(`more than ${CITED_LIMITS.maxClaims} claims`);
@@ -187,5 +196,5 @@ export function validateCitedAnswer(raw: string, finishReason: string | null, ex
 		const quote = Array.from({ length: end - start + 1 }, (_, k) => shown.get(start + k) as string).join('\n');
 		out.push({ text, source_id: e.id, lines: { start, end }, citation: { path: e.path, source: e.source_id, start, end, quote } });
 	});
-	return reasons.length ? { ok: false, reasons } : { ok: true, answer: { status, claims: out } };
+	return reasons.length ? { ok: false, reasons } : { ok: true, answer: { status, claims: out, missing: (missing as string).trim() } };
 }

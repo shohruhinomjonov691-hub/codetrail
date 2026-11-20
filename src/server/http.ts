@@ -1,3 +1,4 @@
+import { createHash, timingSafeEqual } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
 import { fileURLToPath } from 'node:url';
@@ -5,6 +6,8 @@ import { AnswerService, parseLanguage, RequestCancelledError, SearchUnavailableE
 import type { ProjectStatus } from '../catalog.js';
 import { CodeTrailError } from '../errors.js';
 import { assertId, assertSnapshotId } from '../ids.js';
+import { publicReport } from '../monitor/report.js';
+import type { RunReport } from '../monitor/run.js';
 
 const MAX_BODY_BYTES = 8 * 1024;
 const STATIC: Record<string, { file: string; type: string }> = {
@@ -47,7 +50,21 @@ export function parsePublicPins(raw: string | undefined): PublicPin[] {
 	return pins;
 }
 
+/** Monitor endpoints (/api/monitor/check, /api/monitor/last): off unless the operator sets an access key. */
+export interface MonitorApi {
+	/** The secret every request must present as `Authorization: Bearer <key>`. Never logged or returned. */
+	accessKey: string;
+	/** Runs the checks in report mode (one Telegram summary). Rejects with LOCK_TIMEOUT when another run is active. */
+	check: () => Promise<RunReport>;
+	/** The last run's report (the same last-run.json the CLI writes), or null. */
+	last: () => RunReport | null;
+	/** Minimum time between two web-triggered checks (default 60 s). */
+	checkIntervalMs?: number;
+}
+
 export interface ServerOptions {
+	/** Access-key protected monitor API; without it both endpoints answer 403 MONITOR_DISABLED. */
+	monitor?: MonitorApi;
 	/**
 	 * Public mode: the server answers for these projects/snapshots only. With one pin a request
 	 * may omit project_id/snapshot_id; with several, project_id is required. Any other project
@@ -67,6 +84,15 @@ export interface ServerOptions {
 }
 
 const describe = (result: ExplainResponse): string => `mode=${result.mode}${result.reason ? ` reason=${result.reason}` : ''}${result.cached ? ' cached' : ''} evidence=${result.evidence}`;
+
+const MONITOR_ATTEMPTS_PER_MINUTE = 20;
+const sha = (v: string): Buffer => createHash('sha256').update(v).digest();
+
+/** Constant-time check of `Authorization: Bearer <key>`. */
+export function bearerMatches(header: string | undefined, key: string): boolean {
+	const m = /^Bearer (\S+)$/.exec(header ?? '');
+	return m !== null && timingSafeEqual(sha(m[1] as string), sha(key));
+}
 
 class HttpError extends Error {
 	constructor(
@@ -170,6 +196,11 @@ export function createHttpServer(service: AnswerService, options: ServerOptions 
 	const log = options.log ?? (() => {});
 	const pins = options.pinned === undefined ? undefined : Array.isArray(options.pinned) ? (options.pinned as readonly PublicPin[]) : [options.pinned as PublicPin];
 	const requestWindow = new RequestWindow(options.requestsPerMinute ?? 60);
+	// Every monitor request (valid key or not) counts, so the key cannot be guessed quickly.
+	const monitorAttempts = new RequestWindow(MONITOR_ATTEMPTS_PER_MINUTE);
+	const monitorInterval = options.monitor?.checkIntervalMs ?? 60_000;
+	let monitorBusy = false;
+	let monitorLastStart = 0;
 	const server = createServer((req, res) => {
 		const started = Date.now();
 		let note = '';
@@ -187,8 +218,51 @@ export function createHttpServer(service: AnswerService, options: ServerOptions 
 				if (req.method === 'GET' && path === '/api/projects') {
 					const projects = pins ? service.list().filter((p) => pins.some((pin) => pin.project_id === p.project_id && pin.snapshot_id === p.snapshot_id)) : service.list();
 					const catalog = options.catalog ? options.catalog() : projects.map((p): ProjectStatus => ({ project_id: p.project_id, name: p.name, state: 'ready', reason: null, snapshot_id: p.snapshot_id, chunks: p.chunks, sources: p.sources }));
-					send(res, 200, { projects, catalog, pinned: Boolean(pins), ai: { available: service.generationModel !== null, model: service.generationModel } });
+					send(res, 200, { projects, catalog, pinned: Boolean(pins), ai: { available: service.generationModel !== null, model: service.generationModel }, monitor: { available: Boolean(options.monitor) } });
 					return done(200);
+				}
+				if (path === '/api/monitor/check' || path === '/api/monitor/last') {
+					const mon = options.monitor;
+					if (req.method !== (path === '/api/monitor/check' ? 'POST' : 'GET')) throw new HttpError(405, 'METHOD_NOT_ALLOWED', path === '/api/monitor/check' ? 'Use POST' : 'Use GET');
+					if (!mon) throw new HttpError(403, 'MONITOR_DISABLED', 'Monitor access is not enabled on this server');
+					if (!monitorAttempts.allow(clientId(req, options.trustProxy === true))) {
+						note = 'rate_limited';
+						throw new HttpError(429, 'RATE_LIMITED', 'Too many requests');
+					}
+					if (!bearerMatches(req.headers.authorization, mon.accessKey)) {
+						note = 'unauthorized';
+						throw new HttpError(401, 'UNAUTHORIZED', 'A valid access key is required');
+					}
+					if (path === '/api/monitor/last') {
+						const last = mon.last();
+						send(res, 200, last ? publicReport(last) : { at: null, projects: [], items: [], not_configured: [], telegram: null });
+						return done(200);
+					}
+					// POST /api/monitor/check: one run at a time, at most one per interval; the run itself also holds the monitor lock.
+					if (monitorBusy) throw new HttpError(409, 'MONITOR_BUSY', 'A monitor run is already in progress');
+					const wait = monitorLastStart + monitorInterval - Date.now();
+					if (wait > 0) {
+						note = 'check_cooldown';
+						res.setHeader('Retry-After', String(Math.ceil(wait / 1000)));
+						throw new HttpError(429, 'RATE_LIMITED', 'The monitor can be checked once per minute');
+					}
+					monitorBusy = true;
+					monitorLastStart = Date.now();
+					try {
+						const report = await mon.check();
+						note = `telegram=${report.telegram?.outcome ?? 'none'}`;
+						send(res, 200, publicReport(report));
+						return done(200);
+					} catch (err) {
+						if (err instanceof CodeTrailError && err.code === 'LOCK_TIMEOUT') {
+							monitorLastStart = 0; // another process (cron) holds the lock: this click did not run, so it does not use the interval
+							throw new HttpError(409, 'MONITOR_BUSY', 'A monitor run is already in progress');
+						}
+						if (err instanceof CodeTrailError && err.code === 'USAGE') throw new HttpError(503, 'MONITOR_NOT_CONFIGURED', 'The monitor configuration is missing or invalid');
+						throw err;
+					} finally {
+						monitorBusy = false;
+					}
 				}
 				if (path === '/api/search' || path === '/api/explain' || path === '/api/chat') {
 					if (req.method !== 'POST') throw new HttpError(405, 'METHOD_NOT_ALLOWED', 'Use POST');

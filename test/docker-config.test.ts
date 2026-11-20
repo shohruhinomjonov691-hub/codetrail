@@ -78,6 +78,16 @@ describe('exposure and secrets', () => {
 		expect(job).not.toMatch(/index "\$\$\{CODETRAIL_PUBLIC_PIN%%/);
 	});
 
+	it('the server keeps /data read-only except the monitor directory, and reads an optional Telegram env file', () => {
+		const server = compose.slice(compose.indexOf('  codetrail:'), compose.indexOf('  codetrail-index:'));
+		expect(server).toMatch(/- "\$\{CODETRAIL_DATA_HOST_DIR\}\/monitor:\/data\/monitor:rw"/);
+		expect(server).toMatch(/:\/data:ro"/);
+		expect(server).toMatch(/- path: "\$\{CODETRAIL_TELEGRAM_ENV_FILE:-\/opt\/codetrail\/secrets\/telegram\.env\}"\n\s+required: false/);
+		// only the server gets Telegram settings, the index job does not
+		expect(compose.slice(compose.indexOf('  codetrail-index:'))).not.toMatch(/telegram/i);
+		expect(compose).not.toMatch(/TELEGRAM_BOT_TOKEN\s*[:=]/);
+	});
+
 	it('the server mounts data read-only; only the one-off index job writes', () => {
 		const server = compose.slice(compose.indexOf('  codetrail:'), compose.indexOf('  codetrail-index:'));
 		expect(server).toMatch(/:\/data:ro"/);

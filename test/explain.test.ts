@@ -420,7 +420,9 @@ describe('HTTP API (internal, unpinned module) and UI bundle', () => {
 	it('the browser bundle and project list contain no key or provider settings', async () => {
 		const web = join(import.meta.dirname, '..', 'web');
 		for (const f of readdirSync(web)) {
-			const text = readFileSync(join(web, f), 'utf8');
+			// The monitor panel sends the operator's own access key (typed at runtime, never in the bundle) as a
+			// Bearer header; that one exact expression is allowed, any other "Authorization" is still an error.
+			const text = readFileSync(join(web, f), 'utf8').replace('Authorization: `Bearer ${state.monitor.key}`', '');
 			expect(text).not.toMatch(/CODETRAIL_OPENAI|api\.openai\.com|Authorization|\bsk-[A-Za-z0-9]{8}/);
 			expect(text).not.toContain(KEY);
 		}

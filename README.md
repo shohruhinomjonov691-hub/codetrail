@@ -292,8 +292,11 @@ npm run cli -- explain gotrip "Where does AuthGuard get the token from and how i
 # data/monitor.json (git-ignored; see src/monitor/config.ts): health URLs, repo path, log files per project
 TELEGRAM_BOT_TOKEN=… TELEGRAM_CHAT_ID=… npm run cli -- monitor run [--project food-lens] [--dry-run]
 npm run cli -- monitor watch --interval-sec 300
+npm run cli -- monitor run --report --dry-run   # one summary message: printed, not sent
 npm run cli -- monitor status
 ```
+
+**Daily report and the web Check button.** `monitor run --report [--dry-run]` runs the same checks and then sends ONE Telegram message whatever the result (`📊 CodeTrail monitor — 2026-11-21 09:00 KST`, one line of healthy projects, one line per problem, or `✅ 6/6 — hammasi ishlayapti`). In this mode failures are not also sent as separate alerts, the alert state and log cursors are left untouched, and `--dry-run` prints the message on stdout instead of sending it. The result goes into the same `last-run.json` (plus an optional `telegram` field: `Sent`, `Failed`, `DryRun` or `not_configured`). `serve` with `CODETRAIL_MONITOR_KEY` set adds the key-protected `POST /api/monitor/check` (one run a minute, 409 while another run holds the lock) and `GET /api/monitor/last`, and the UI's Monitor panel; without the key both answer 403. See `DEPLOY.md` for the Docker setup.
 
 - **Checks.** `Health Check`: GET with a timeout and one retry; 2xx/3xx is healthy, a slow answer or a 4xx is `Warning`, a 5xx, refused/timed-out/unresolvable connection or TLS failure is `Critical / Down`. `Repo / Log Check`: the repository must have a resolvable HEAD; log files are read only from where the last run stopped (old or stale logs never alert); FATAL-class markers are `Critical / Down`, other error markers `Warning`.
 - **Alerts only for failures.** A healthy project sends nothing, and a project with nothing configured is reported as not configured, never as failing. The message is plain text: `Muammo` / `Ehtimoliy sabab (confidence)` / `Nima qilish kerak`.

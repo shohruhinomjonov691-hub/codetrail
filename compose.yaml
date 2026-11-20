@@ -49,6 +49,10 @@ services:
     env_file:
       - path: "${CODETRAIL_ENV_FILE:-.env}"
         required: true
+      # Telegram bot token and chat id for the monitor (TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID). Optional: without the
+      # file the monitor reports "not_configured" instead of failing. Keep it outside the repo, mode 600.
+      - path: "${CODETRAIL_TELEGRAM_ENV_FILE:-/opt/codetrail/secrets/telegram.env}"
+        required: false
     environment:
       CODETRAIL_DATA_DIR: /data
       CODETRAIL_EMBED_URL: http://llama-embed:8081
@@ -59,6 +63,8 @@ services:
     volumes:
       - "${CODETRAIL_MODELS_HOST_DIR:?set CODETRAIL_MODELS_HOST_DIR}:/models:ro"
       - "${CODETRAIL_DATA_HOST_DIR:?set CODETRAIL_DATA_HOST_DIR}:/data:ro"
+      # The only writable part of /data: monitor state (state.json, last-run.json, alerts.log.jsonl, locks).
+      - "${CODETRAIL_DATA_HOST_DIR}/monitor:/data/monitor:rw"
     ports:
       - "127.0.0.1:${CODETRAIL_HTTP_PORT:-8080}:8080"
     networks: [internal, egress]

@@ -346,3 +346,26 @@ body.chatting .composer { position: sticky; bottom: 0; margin-top: auto; padding
 	.project-state { white-space: nowrap; max-width: 150px; overflow: hidden; text-overflow: ellipsis; }
 	.side-label { display: none; }
 }
+
+/* ---------- monitor panel ---------- */
+.monitor-key { display: flex; flex-direction: column; gap: 8px; }
+.monitor-key-row { display: flex; gap: 8px; }
+.monitor-key-input { flex: 1; min-width: 0; padding: 10px 12px; border: 1px solid var(--border-strong); border-radius: 10px; background: var(--code-bg); color: var(--text); font: inherit; }
+.monitor-key-input:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.monitor-bar { display: flex; gap: 8px; margin-bottom: 14px; }
+.monitor-note { margin: 10px 0 0; font-size: 13.5px; }
+.monitor-table-wrap { overflow-x: auto; border: 1px solid var(--border); border-radius: 12px; background: var(--panel); }
+.monitor-table { width: 100%; border-collapse: collapse; font-size: 14px; }
+.monitor-table th, .monitor-table td { padding: 9px 12px; text-align: left; vertical-align: top; border-bottom: 1px solid var(--border); }
+.monitor-table thead th { color: var(--muted); font-size: 12.5px; font-weight: 600; white-space: nowrap; }
+.monitor-table tbody tr:last-child > * { border-bottom: 0; }
+.monitor-name { font-weight: 600; }
+.monitor-status, .monitor-time { white-space: nowrap; }
+.monitor-reason { overflow-wrap: anywhere; }
+.monitor-critical .monitor-status { color: var(--error, #ff8a9b); }
+.monitor-warning .monitor-status { color: var(--warn); }
+.monitor-result { min-height: 1.4em; margin: 14px 0 0; font-weight: 600; }
+.monitor-result.monitor-error { color: var(--error, #ff8a9b); }
+.btn-primary { border-color: transparent; background: linear-gradient(135deg, var(--primary), #7c5cf0); color: #fff; }
+.btn-primary:hover:not(:disabled) { background: linear-gradient(135deg, var(--primary-hover), #8b6cf5); }
+.btn-primary:disabled { opacity: 0.7; cursor: progress; }

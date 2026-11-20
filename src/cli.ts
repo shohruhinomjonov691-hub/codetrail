@@ -12,7 +12,7 @@ import { loadFixture } from './eval/fixture.js';
 import { EVAL_MODES, renderMarkdown, runEvaluation, type EvalMode } from './eval/run.js';
 import { AnswerService } from './answer/service.js';
 import { createGenerationProvider, generationSettings } from './generation/config.js';
-import { createHttpServer, parsePublicPins } from './server/http.js';
+import { createHttpServer, parsePublicPins, type MonitorApi } from './server/http.js';
 import { projectStatuses, writeIndexStatus } from './catalog.js';
 import { loadMonitorConfig, monitorDir } from './monitor/config.js';
 import { keywordRag } from './monitor/rag.js';
@@ -39,10 +39,13 @@ Usage:
   codetrail serve   [--host 127.0.0.1] [--port 8080]       public HTTP API + UI for CODETRAIL_PUBLIC_PIN only
   codetrail explain <project_id> <question> [--language en|ko]   one AI explanation (calls OpenAI if configured)
   codetrail monitor run    [--project <id>]... [--dry-run]       health + repo/log checks; Telegram alert on failures only
+  codetrail monitor run --report [--project <id>]... [--dry-run] same checks, then ONE Telegram summary message whatever the result
+                                                                 (no per-failure alerts; --dry-run prints the message, sends nothing)
   codetrail monitor watch  [--interval-sec 300] [--project <id>]...   repeat 'monitor run' until stopped
   codetrail monitor status                                       the last run's report (redacted)
 
 Environment: TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID (monitor alerts), CODETRAIL_MONITOR_CONFIG / CODETRAIL_MONITOR_DIR,
+CODETRAIL_MONITOR_KEY (serve: access key for /api/monitor/*; without it those endpoints are disabled),
 CODETRAIL_DATA_DIR (default ./data), CODETRAIL_LOCAL_ROOTS (colon-separated),
 CODETRAIL_EMBED_URL, CODETRAIL_MODELS_DIR, CODETRAIL_PROVIDER_HOSTS (local embeddings), CODETRAIL_PUBLIC_PIN,
 CODETRAIL_OPENAI_API_KEY / CODETRAIL_OPENAI_MODEL / CODETRAIL_AI_* (answer generation; see .env.example).
@@ -80,8 +83,9 @@ function print(value: unknown): void {
 async function main(argv: string[]): Promise<number> {
 	const config = loadConfig();
 	const registry = new Registry(config.dataDir);
-	const dryRun = argv.includes('--dry-run'); // the only boolean flag
-	const { positional, flags } = parse(argv.filter((a) => a !== '--dry-run'));
+	const dryRun = argv.includes('--dry-run'); // boolean flags: --dry-run, --report
+	const report = argv.includes('--report');
+	const { positional, flags } = parse(argv.filter((a) => a !== '--dry-run' && a !== '--report'));
 	const [group, action, ...rest] = positional;
 	const one = (name: string): string | undefined => flags.get(name)?.at(-1);
 
@@ -210,11 +214,12 @@ async function main(argv: string[]): Promise<number> {
 			return 0;
 		}
 		if (action !== 'run' && action !== 'watch') throw new CodeTrailError('USAGE', USAGE);
+		if (report && action !== 'run') throw new CodeTrailError('USAGE', '--report works with "monitor run" only (a repeated summary would spam the chat)');
 		const only = flags.get('project');
 		const monitorConfig = loadMonitorConfig(config.dataDir);
 		const { rag, close } = keywordRag(config.dataDir, embeddingSettings().recipe);
 		const once = async (): Promise<void> => {
-			const report = await runMonitor({
+			const result = await runMonitor({
 				dataDir: config.dataDir,
 				stateDir,
 				config: monitorConfig,
@@ -222,9 +227,12 @@ async function main(argv: string[]): Promise<number> {
 				telegram: telegramFromEnv(),
 				rag,
 				dryRun,
+				report,
+				// A dry-run summary goes to stdout and nowhere else.
+				...(report && dryRun ? { onReportMessage: (text: string) => process.stdout.write(`${text}\n\n`) } : {}),
 				log: (line) => process.stderr.write(`${new Date().toISOString()} ${line}\n`),
-			});
-			print(report);
+				});
+				print(result);
 		};
 		try {
 			if (action === 'run') await once();
@@ -281,9 +289,23 @@ async function main(argv: string[]): Promise<number> {
 		const host = one('host') ?? '127.0.0.1';
 		const port = Number(one('port') ?? 8080);
 		if (!Number.isInteger(port) || port < 1 || port > 65535) throw new CodeTrailError('USAGE', '--port must be 1..65535');
+		// Monitor endpoints need an access key of at least 16 characters; otherwise they stay off (fail closed).
+		const monitorKey = process.env.CODETRAIL_MONITOR_KEY?.trim() ?? '';
+		const monitorKeyOk = monitorKey.length >= 16 && !/\s/.test(monitorKey);
+		if (monitorKey && !monitorKeyOk) process.stderr.write('monitor endpoints are disabled: CODETRAIL_MONITOR_KEY must be at least 16 characters without spaces\n');
+		const monitorApi: MonitorApi | undefined =
+			monitorKeyOk
+			? {
+						accessKey: monitorKey,
+						// Config and Telegram settings are read on every call, so editing monitor.json or telegram.env needs no restart.
+						check: () => runMonitor({ dataDir: config.dataDir, stateDir: monitorDir(config.dataDir), config: loadMonitorConfig(config.dataDir), telegram: telegramFromEnv(), report: true, lockTimeoutMs: 300 }),
+						last: () => lastReport(monitorDir(config.dataDir)),
+					}
+				: undefined;
 		const server = createHttpServer(service, {
 			...(pins ? { pinned: pins } : {}),
 			catalog: () => projectStatuses(config.dataDir, service.list(), { skipped }),
+			...(monitorApi ? { monitor: monitorApi } : {}),
 			requestsPerMinute: Number(process.env.CODETRAIL_REQUESTS_PER_MINUTE) || 60,
 			trustProxy: process.env.CODETRAIL_TRUST_PROXY === '1',
 			log: (line) => process.stderr.write(`${new Date().toISOString()} ${line}\n`),

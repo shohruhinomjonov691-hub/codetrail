@@ -133,6 +133,24 @@ All paths are under a new directory, for example `/srv/codetrail`. Nothing else 
 - **Logs** record route, status, duration and mode/reason only. Docker log rotation is 10 MB × 3.
 - **Never** pass the key with `-e` on the command line, where it would end up in shell history.
 
-## Monitoring is not part of this stack
+## Monitoring: daily report and the web Check button
 
-`codetrail monitor run|watch|status` (health checks, repo/log checks and Telegram alerts for failures only) is not started by `compose.yaml`, and the server image needs no Telegram settings. Do not put `TELEGRAM_BOT_TOKEN` or `TELEGRAM_CHAT_ID` into `runtime.env` or the compose file. If you run the monitor, run it from a separate host process or cron job with those two variables set only in that process's environment, `data/monitor.json` kept outside git, and `monitor run --dry-run` first. See the README section "Six projects, chat stream and monitoring".
+The `codetrail` service can run the monitor and send Telegram messages. Three things are wired in `compose.yaml`: `${CODETRAIL_DATA_HOST_DIR}/monitor` is mounted read-write at `/data/monitor` (the rest of `/data` stays read-only; this is where `state.json`, `last-run.json`, `alerts.log.jsonl` and the lock live), and an optional second env file, `${CODETRAIL_TELEGRAM_ENV_FILE:-/opt/codetrail/secrets/telegram.env}` (`required: false`), supplies the Telegram settings. Without that file the monitor does not fail: a report is shown with the Telegram outcome `not_configured`.
+
+One-time setup on the server (no value goes into the repo, an image, the compose file or `runtime.env` history):
+1. Make the monitor directory writable for the app user, like the data directory in step 6.2 (`mkdir -p "${CODETRAIL_DATA_HOST_DIR}/monitor"`, then the same `chown`).
+2. Create `/opt/codetrail/secrets/telegram.env` (`chmod 600`, owner root or the deploy user) with two `KEY=value` lines named `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID`. Take the values from BotFather and `getUpdates`; never paste them into chat, tickets or the repo.
+3. Put the monitor configuration at `${CODETRAIL_DATA_HOST_DIR}/monitor/monitor.json` (health URLs only; repo and log paths of the Mac do not exist in the container). Point the server at it in `runtime.env` with `CODETRAIL_MONITOR_CONFIG=/data/monitor/monitor.json`.
+4. For the web Check button add an access key to `runtime.env`: `CODETRAIL_MONITOR_KEY=<output of openssl rand -hex 16>`. The server has no other login: the pins only choose which projects are answered and are public in `/api/projects`. Without the key both `/api/monitor/*` endpoints answer 403 and the Monitor entry is hidden in the UI. Over the reverse proxy always use HTTPS, because the key travels in the `Authorization` header.
+5. Restart: `docker compose up -d`.
+
+Daily report (`monitor run --report`): run the checks, then send ONE Telegram summary whatever the result (no separate per-failure alerts in this mode; it does not use up the alert cool-down and does not consume log lines). Try it first with `--dry-run`, which prints the message and sends nothing:
+```bash
+docker compose exec codetrail node dist/cli.js monitor run --report --dry-run
+docker compose exec codetrail node dist/cli.js monitor run --report
+```
+For 09:00 Asia/Seoul every day, schedule the second command on the host, for example `0 9 * * *` with `CRON_TZ=Asia/Seoul` (or `0 0 * * *` in UTC), as `cd /srv/codetrail/app && docker compose exec -T codetrail node dist/cli.js monitor run --report`. The message time is always shown in KST.
+
+Web: the Monitor panel asks for the key (kept in the tab's memory only), shows the last result from `last-run.json` (the same file `monitor status` prints) and a Check button. `POST /api/monitor/check` runs one report-mode check and sends one Telegram message; it is limited to one run per minute (429, with `Retry-After`) and answers 409 while another run holds the monitor lock. Both endpoints answer 401 without the right key and 429 after 20 attempts a minute.
+
+Alerts for failures only (`monitor run` / `monitor watch` without `--report`) work as before. Never put the Telegram values or the monitor key in `compose.yaml`, an image, the repo or a command line.

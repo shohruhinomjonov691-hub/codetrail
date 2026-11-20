@@ -75,7 +75,12 @@ const state = {
 	nextId: 1,
 	busy: false,
 	controller: null,
-	/** Right panel: {kind:'intro'} | {kind:'how'} | {kind:'source', msgId, list:'cite'|'hits', idx} */
+	/**
+	 * Monitor panel. `key` is the operator's access key: it lives in this variable only (never in storage,
+	 * the URL or the DOM after unlock) and is sent as a Bearer header.
+	 */
+	monitor: { available: false, key: null, report: null, busy: false, checking: false, errorCode: null, telegram: null },
+	/** Right panel: {kind:'intro'} | {kind:'how'} | {kind:'monitor'} | {kind:'source', msgId, list:'cite'|'hits', idx} */
 	panel: { kind: 'intro' },
 	/** Narrow screens show the panel as a sheet; this is the button that opened it (focus returns there). */
 	trigger: null,
@@ -658,11 +663,186 @@ function sourcePanel(p) {
 	return box;
 }
 
+// ---------- monitor ----------
+
+const MONITOR_MARK = { ok: '✅', warning: '⚠️', critical: '❌' };
+const MONITOR_ERRORS = ['UNAUTHORIZED', 'RATE_LIMITED', 'MONITOR_BUSY', 'MONITOR_DISABLED', 'MONITOR_NOT_CONFIGURED', 'NETWORK'];
+
+function monitorTime(iso) {
+	if (!iso) return '—';
+	try {
+		return `${new Date(iso).toLocaleString(state.lang === 'ko' ? 'ko-KR' : 'en-GB', { timeZone: 'Asia/Seoul', dateStyle: 'medium', timeStyle: 'short' })} KST`;
+	} catch {
+		return iso;
+	}
+}
+
+function updateMonitorNav() {
+	$('nav-monitor').hidden = !state.monitor.available;
+}
+
+async function monitorFetch(path, method) {
+	let res;
+	try {
+		res = await fetch(path, { method, headers: { Authorization: `Bearer ${state.monitor.key}` } });
+	} catch {
+		throw networkError();
+	}
+	let data = null;
+	try {
+		data = await res.json();
+	} catch {
+		data = null;
+	}
+	if (!res.ok) throw Object.assign(new Error('request failed'), { code: data?.error?.code ?? `HTTP_${res.status}` });
+	return data;
+}
+
+function monitorFail(err) {
+	const m = state.monitor;
+	m.errorCode = MONITOR_ERRORS.includes(err.code) ? err.code : 'generic';
+	if (err.code === 'UNAUTHORIZED') {
+		// the key is wrong (or was rotated): forget it and the results it unlocked
+		m.key = null;
+		m.report = null;
+	}
+}
+
+/** Unlock = validate the key by reading the last result. */
+async function monitorUnlock(key) {
+	const m = state.monitor;
+	m.key = key;
+	m.busy = true;
+	m.errorCode = null;
+	m.telegram = null;
+	renderPanel();
+	try {
+		m.report = await monitorFetch('/api/monitor/last', 'GET');
+	} catch (err) {
+		monitorFail(err);
+		if (err.code !== 'UNAUTHORIZED') m.key = null; // an unverified key is not kept
+	}
+	m.busy = false;
+	renderPanel();
+}
+
+async function monitorCheck() {
+	const m = state.monitor;
+	if (m.busy || !m.key) return;
+	m.busy = true;
+	m.checking = true;
+	m.errorCode = null;
+	m.telegram = null;
+	renderPanel();
+	try {
+		m.report = await monitorFetch('/api/monitor/check', 'POST');
+		m.telegram = m.report.telegram?.outcome ?? null;
+	} catch (err) {
+		monitorFail(err);
+	}
+	m.busy = false;
+	m.checking = false;
+	renderPanel();
+	$('inspector').querySelector('[data-focus="monitor-check"]')?.focus();
+}
+
+function monitorTable(report) {
+	const wrap = el('div', 'monitor-table-wrap');
+	const table = el('table', 'monitor-table');
+	const head = el('tr');
+	for (const k of ['project', 'status', 'reason', 'time']) head.append(el('th', '', t(`monitor.col.${k}`)));
+	for (const th of head.children) th.scope = 'col';
+	const thead = el('thead');
+	thead.append(head);
+	table.append(thead);
+	const body = el('tbody');
+	const when = monitorTime(report.at);
+	for (const p of report.projects) {
+		const row = el('tr', `monitor-row monitor-${p.status}`);
+		const status = el('td', 'monitor-status');
+		status.append(el('span', 'monitor-mark', MONITOR_MARK[p.status] ?? ''), document.createTextNode(` ${t(`monitor.status.${p.status}`)}`));
+		row.append(el('th', 'monitor-name', p.name), status, el('td', 'monitor-reason', p.reason || t('monitor.reason.none')), el('td', 'monitor-time', when));
+		row.firstChild.scope = 'row';
+		body.append(row);
+	}
+	table.append(body);
+	wrap.append(table);
+	return wrap;
+}
+
+function monitorPanel() {
+	const m = state.monitor;
+	const box = el('div', 'panel-monitor');
+	box.append(panelHead(el('h2', 'panel-title', t('monitor.title'))), el('p', 'panel-lead', t('monitor.lead')));
+
+	if (!m.key) {
+		const form = el('form', 'monitor-key');
+		form.autocomplete = 'off';
+		const label = el('label', 'field-label', t('monitor.key.label'));
+		label.htmlFor = 'monitor-key-input';
+		const input = el('input', 'monitor-key-input');
+		input.id = 'monitor-key-input';
+		input.type = 'password';
+		input.autocomplete = 'off';
+		input.spellcheck = false;
+		input.required = true;
+		input.maxLength = 200;
+		const go = el('button', 'btn btn-primary', t('monitor.key.unlock'));
+		go.type = 'submit';
+		go.disabled = m.busy;
+		form.addEventListener('submit', (e) => {
+			e.preventDefault();
+			const v = input.value.trim();
+			input.value = '';
+			if (v) void monitorUnlock(v);
+		});
+		const row = el('div', 'monitor-key-row');
+		row.append(input, go);
+		form.append(label, row, el('p', 'muted monitor-note', t('monitor.key.note')));
+		box.append(form);
+	} else {
+		const bar = el('div', 'monitor-bar');
+		const check = el('button', 'btn btn-primary monitor-check', m.checking ? t('monitor.checking') : t('monitor.check'));
+		check.type = 'button';
+		check.disabled = m.busy;
+		check.dataset.focus = 'monitor-check';
+		check.setAttribute('aria-busy', String(m.checking));
+		check.addEventListener('click', () => void monitorCheck());
+		const lock = el('button', 'btn btn-ghost', t('monitor.key.forget'));
+		lock.type = 'button';
+		lock.disabled = m.busy;
+		lock.addEventListener('click', () => {
+			m.key = null;
+			m.report = null;
+			m.telegram = null;
+			m.errorCode = null;
+			renderPanel();
+		});
+		bar.append(check, lock);
+		box.append(bar);
+		if (m.checking) box.append(el('p', 'muted monitor-note monitor-loading', t('monitor.checking.note')));
+		const r = m.report;
+		if (r && r.projects.length) {
+			box.append(monitorTable(r));
+			if (r.not_configured.length) box.append(el('p', 'muted monitor-note', t('monitor.notConfigured', { names: r.not_configured.join(', ') })));
+			box.append(el('p', 'muted monitor-note', t('monitor.last', { time: monitorTime(r.at) })));
+		} else if (!m.checking) box.append(el('p', 'muted monitor-note', t('monitor.empty')));
+	}
+	// polite live region: the Telegram outcome of the check that just ran, or the reason it did not run
+	const live = el('p', `monitor-result${m.errorCode ? ' monitor-error' : ''}`);
+	live.setAttribute('role', m.errorCode ? 'alert' : 'status');
+	if (m.errorCode) live.textContent = t(`monitor.error.${m.errorCode}`);
+	else if (m.telegram) live.textContent = t(`monitor.telegram.${m.telegram}`);
+	box.append(live);
+	return box;
+}
+
 function renderPanel() {
 	const p = state.panel;
 	const body = $('inspector-body');
-	body.replaceChildren(p.kind === 'source' ? sourcePanel(p) : p.kind === 'how' ? howPanel() : introPanel());
+	body.replaceChildren(p.kind === 'source' ? sourcePanel(p) : p.kind === 'how' ? howPanel() : p.kind === 'monitor' ? monitorPanel() : introPanel());
 	$('nav-how').setAttribute('aria-current', String(p.kind === 'how'));
+	$('nav-monitor').setAttribute('aria-current', String(p.kind === 'monitor'));
 	// scroll the code box (not the page) so the cited lines are in view
 	const code = body.querySelector('.inspector-code');
 	const hl = body.querySelector('.row.hl');
@@ -884,6 +1064,8 @@ async function loadProjects() {
 	const data = await res.json();
 	state.served = new Map(data.projects.map((p) => [p.project_id, p]));
 	state.catalog = data.catalog ?? data.projects.map((p) => ({ project_id: p.project_id, name: p.name, state: 'ready', reason: null }));
+	state.monitor.available = Boolean(data.monitor?.available);
+	updateMonitorNav();
 	return data;
 }
 
@@ -897,10 +1079,14 @@ async function init() {
 	$('stop-btn').addEventListener('click', stop);
 	$('new-chat').addEventListener('click', newChat);
 	$('nav-ask').addEventListener('click', () => {
-		if (state.panel.kind === 'how') showPanel('intro');
+		if (state.panel.kind === 'how' || state.panel.kind === 'monitor') showPanel('intro');
 		$('question').focus();
 	});
 	$('nav-how').addEventListener('click', (e) => showPanel('how', e.currentTarget));
+	$('nav-monitor').addEventListener('click', (e) => {
+		showPanel('monitor', e.currentTarget);
+		$('inspector').querySelector('.monitor-key-input, [data-focus="monitor-check"]')?.focus();
+	});
 	$('question').addEventListener('input', autoGrow);
 	$('question').addEventListener('keydown', (e) => {
 		if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) {

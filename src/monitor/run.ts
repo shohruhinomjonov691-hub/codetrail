@@ -6,6 +6,7 @@ import { withLock } from '../lock.js';
 import { healthCheck, logCheck, recentCommits, repoCheck, type CheckResult, type LogCursor, type Severity } from './checks.js';
 import type { MonitorConfig } from './config.js';
 import { brief } from './redact.js';
+import { formatReportMessage } from './report.js';
 import { analyze, type Analysis, type RagSearch } from './rootcause.js';
 import { sendTelegram, type SendResult, type TelegramConfig } from './telegram.js';
 
@@ -37,11 +38,20 @@ export interface ReportItem {
 	alert: { outcome: AlertOutcome; reason: string | null } | null;
 }
 
+/** What happened to the one summary message of a `--report` run. */
+export interface ReportTelegram {
+	outcome: 'Sent' | 'Failed' | 'DryRun' | 'not_configured';
+	/** Failure class only (`http_401`, `timeout`, `network`); never the token or Telegram's reply. */
+	reason: string | null;
+}
+
 export interface RunReport {
 	at: string;
 	items: ReportItem[];
 	/** Projects with nothing configured to check (never an alert: unknown is not failing). */
 	not_configured: string[];
+	/** Present only when the run was a `--report` run. Same file, same schema, one optional field. */
+	telegram?: ReportTelegram;
 }
 
 export interface RunOptions {
@@ -58,6 +68,16 @@ export interface RunOptions {
 	now?: () => number;
 	log?: (line: string) => void;
 	retryDelayMs?: number;
+	/**
+	 * Report mode: run every check, then send ONE summary message whatever the outcome. Individual failure
+	 * alerts are not sent in this mode (the summary carries them), no alert state changes and log cursors
+	 * are left where they were, so the next normal run still alerts on what this one only reported.
+	 */
+	report?: boolean;
+	/** Called with the summary text in report mode just before it is sent, or instead of sending when dryRun. */
+	onReportMessage?: (text: string) => void;
+	/** How long to wait for another run to finish before giving up with LOCK_TIMEOUT (default 15 s). */
+	lockTimeoutMs?: number;
 }
 
 const LEVEL: Record<Severity, ReportItem['level']> = { ok: 'OK', warning: 'Warning', critical: 'Critical / Down' };
@@ -114,7 +134,7 @@ export async function runMonitor(opts: RunOptions): Promise<RunReport> {
 	const names = new Map(PROJECT_CATALOG.map((p) => [p.id, p.name]));
 	const ids = PROJECT_CATALOG.map((p) => p.id).filter((id) => !opts.only || opts.only.includes(id));
 	mkdirSync(opts.stateDir, { recursive: true });
-	return withLock(join(opts.stateDir, 'locks'), 'monitor', { timeoutMs: 15_000 }, async () => {
+	return withLock(join(opts.stateDir, 'locks'), 'monitor', { timeoutMs: opts.lockTimeoutMs ?? 15_000 }, async () => {
 		const state = loadState(opts.stateDir);
 		const items: ReportItem[] = [];
 		const notConfigured: string[] = [];
@@ -144,6 +164,8 @@ export async function runMonitor(opts: RunOptions): Promise<RunReport> {
 				});
 				results.push(result);
 			}
+			// A report run only observes: it must not consume log lines the next normal run should alert on.
+			if (opts.report) for (const undo of undoCursor.values()) undo();
 			const commits = cfg.repo && results.some((r) => r.severity !== 'ok') ? await recentCommits(cfg.repo.path) : [];
 
 			for (const r of results) {
@@ -158,6 +180,10 @@ export async function runMonitor(opts: RunOptions): Promise<RunReport> {
 				}
 				cs.ok_streak = 0;
 				const analysis = await analyze(r, { projectName: names.get(id) as string, commits, rag: opts.rag ?? null, siblings: results });
+				if (opts.report) {
+					items.push({ project_id: id, project: names.get(id) as string, source: r.source, check: r.check, level: LEVEL[r.severity], summary: brief(r.summary, 240), analysis, alert: null });
+					continue;
+				}
 				const key = `${ckey}#${alertKey(r)}`;
 				const cooldownMs = (r.severity === 'critical' ? opts.config.cooldown_minutes.critical : opts.config.cooldown_minutes.warning) * 60_000;
 				const prev = state.alerts[key];
@@ -194,6 +220,23 @@ export async function runMonitor(opts: RunOptions): Promise<RunReport> {
 		// forget alert entries older than 7 days
 		for (const [k, v] of Object.entries(state.alerts)) if (now() - Date.parse(v.last_sent) > 7 * 86_400_000) delete state.alerts[k];
 		const report: RunReport = { at: stamp, items, not_configured: notConfigured };
+		if (opts.report) {
+			const text = formatReportMessage(report);
+			opts.onReportMessage?.(text);
+			let telegram: ReportTelegram;
+			if (opts.dryRun) telegram = { outcome: 'DryRun', reason: null };
+			else {
+				const sent: SendResult = await sendTelegram(opts.telegram, text, opts.fetchImpl);
+				telegram = sent.ok ? { outcome: 'Sent', reason: null } : sent.reason === 'not_configured' ? { outcome: 'not_configured', reason: null } : { outcome: 'Failed', reason: sent.reason };
+				try {
+					appendFileSync(join(opts.stateDir, 'alerts.log.jsonl'), JSON.stringify({ at: stamp, kind: 'report', outcome: telegram.outcome, reason: telegram.reason }) + '\n');
+				} catch {
+					/* the log must not break the run */
+				}
+			}
+			report.telegram = telegram;
+			log(`report ${telegram.outcome}${telegram.reason ? ` reason=${telegram.reason}` : ''}`);
+		}
 		if (!opts.dryRun) saveJson(opts.stateDir, 'state.json', state);
 		saveJson(opts.stateDir, 'last-run.json', report);
 		return report;

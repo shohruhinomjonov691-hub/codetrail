@@ -71,6 +71,13 @@ describe('exposure and secrets', () => {
 		expect(compose).not.toMatch(/QUERY_TIMEOUT/);
 	});
 
+	it('the index job indexes every pinned project, not only the first', () => {
+		const job = compose.slice(compose.indexOf('  codetrail-index:'));
+		expect(job).toMatch(/for pin in \$\$\(printf %s "\$\$\{CODETRAIL_PUBLIC_PIN\}" \| tr "," " "\)/);
+		expect(job).toMatch(/index "\$\$\{pin%%:\*\}" "\$\$\{pin#\*:\}" \|\| exit 1/);
+		expect(job).not.toMatch(/index "\$\$\{CODETRAIL_PUBLIC_PIN%%/);
+	});
+
 	it('the server mounts data read-only; only the one-off index job writes', () => {
 		const server = compose.slice(compose.indexOf('  codetrail:'), compose.indexOf('  codetrail-index:'));
 		expect(server).toMatch(/:\/data:ro"/);
@@ -97,6 +104,14 @@ describe('DEPLOY.md prepares data permissions for the non-root index job', () =>
 		expect(deploy).toMatch(/fs\.writeFileSync\(f, ""\); fs\.unlinkSync\(f\); console\.log\("data writable"\)/);
 		// the permission step comes before the index build
 		expect(deploy.indexOf('data writable')).toBeLessThan(deploy.indexOf('docker compose --profile index run --rm codetrail-index\n'));
+	});
+
+	it('documents the multi-project export, server-side indexing and no Mac indexes', () => {
+		expect(deploy).toMatch(/export-serve-data\.mjs deploy-data/);
+		expect(deploy).toMatch(/CODETRAIL_PUBLIC_PIN=gotrip:[0-9a-f]{24},kervan:/);
+		expect(deploy).toMatch(/Do not pass `--with-index`/);
+		expect(deploy).toMatch(/index must be built on the server, for every pinned project/);
+		expect(deploy).not.toMatch(/TELEGRAM_BOT_TOKEN=\S/);
 	});
 
 	it('never widens permissions or runs the job as root; model and serving data stay read-only', () => {

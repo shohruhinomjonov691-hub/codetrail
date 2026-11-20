@@ -222,11 +222,11 @@ v2 results. The reports were regenerated on the schema-2 snapshots (GoTrip `d75a
 ```bash
 npm run build
 scripts/embed-server.sh &                 # local embeddings (CODETRAIL_MODELS_DIR=…)
-CODETRAIL_PUBLIC_PIN=gotrip:d75aaec921284e35893092a7 npm run cli -- serve --port 8080   # http://127.0.0.1:8080
+CODETRAIL_PUBLIC_PIN=gotrip:d75aaec921284e35893092a7 npm run cli -- serve --port 8080   # http://127.0.0.1:8080 (several pairs, comma-separated: see below)
 npm run cli -- explain gotrip "Where does AuthGuard get the token from and how is it verified?"   # operator CLI, one explanation
 ```
 
-- **The public server is pinned to one project and snapshot.** `serve` needs `CODETRAIL_PUBLIC_PIN=<project>:<snapshot>` (the public demo: `gotrip:d75aaec9…`, the GoTrip frontend + backend snapshot) and refuses to start without it, or if that snapshot has no usable index. The UI shows that project only: there is no project picker and no way to upload or connect a repository. Projects and snapshots are created by the operator with the CLI (`project add`, `source add-*`, `snapshot create`, `index`); the internal modules stay multi-project (the operator CLI `explain <project>` can address any indexed project).
+- **The public server is pinned by the operator.** `serve` needs `CODETRAIL_PUBLIC_PIN=<project>:<snapshot>[,<project>:<snapshot>…]` (1–12 pairs) and refuses to start without it, or if none of the pinned snapshots has a usable index. The UI lists the pinned projects (Ready / Indexing / Error) and lets the visitor pick one; there is no way to upload or connect a repository. Projects and snapshots are created by the operator with the CLI (`project add`, `source add-*`, `snapshot create`, `index`); the internal modules stay multi-project (the operator CLI `explain <project>` can address any indexed project).
 - **Requests.** `POST /api/search` and `POST /api/explain` take `{question, language?, previous_questions?}` (`language`: `en` | `ko`, default `en`); `project_id`/`snapshot_id` may be omitted and are then the pinned ones, any other value is refused with 403 (`PROJECT_NOT_ALLOWED` / `SNAPSHOT_NOT_ALLOWED`). Retrieval reads only the pinned project's index and the model only receives its excerpts.
 - **Follow-ups.** `previous_questions` holds at most 2 earlier questions of the conversation (strings, each ≤ 1000 characters; anything else is 400). Earlier answers are never accepted from the client, so nothing the client sends can pose as code evidence.
   - Retrieval runs twice — on the current question alone, and on the current question followed by the earlier questions (newest first, within the 1000-character query limit) — and the two ranked lists are merged by reciprocal-rank fusion with equal weights. A follow-up gets context hits, and an unrelated new question keeps its own top results. The response lists the earlier questions used in `previous_questions`. If the context search fails while the question's own search worked, the own results are used and `previous_questions` is empty. Excerpt lines are picked by the current question's words, or by the earlier questions' words in a chunk that contains none of them.
@@ -311,8 +311,8 @@ npm run cli -- monitor status
 | `codetrail` | API + UI (`Dockerfile`) | internal + egress for OpenAI | 512 MiB, 1 CPU |
 
 - **Mounts.** Both containers mount the embedding model read-only at the same path, `/models`, so the cross-container identity check holds: the model path, the runtime build and the model SHA-256 must all match.
-- **Data.** The server reads `/data` read-only. That directory is produced by `scripts/export-serve-data.mjs`: one registry entry and one snapshot.
-- **Index.** The index is built **on the serving platform** with `docker compose --profile index run --rm codetrail-index`.
+- **Data.** The server reads `/data` read-only. That directory is produced by `scripts/export-serve-data.mjs <out_dir> <project:snapshot>…`: the registry entries and snapshots of the pinned projects, no index. See `DEPLOY.md` for the multi-project steps.
+- **Index.** The index of every pinned snapshot is built **on the serving platform**, one after the other, with `docker compose --profile index run --rm codetrail-index`.
   - Why: an index built on the Mac (Metal) fails the 0.9999 embedding fingerprint check against the Linux CPU runtime (measured cosine 0.999705). That check is intended to fail closed.
   - Batching: the index job sends one input per request with a 300 s per-request timeout (`CODETRAIL_EMBED_BATCH_SIZE`, `CODETRAIL_EMBED_DOC_TIMEOUT_MS`; defaults outside Docker stay 8 and 120 s; the query timeout is fixed). Measured in local Docker (2 CPUs, arm64): the two largest GoTrip chunks (3008 + 2984 tokens) took 121.5 s, so the old 120 s timeout with 8-input requests failed a first run.
   - Resumable: vectors are validated and cached in groups of 32 while indexing, so an interrupted build keeps its progress and a rerun computes only what is missing.

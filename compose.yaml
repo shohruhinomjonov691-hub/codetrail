@@ -72,7 +72,7 @@ services:
       resources:
         limits: { memory: 512M, cpus: "1.0" }
 
-  # One-off: builds the pinned snapshot's index with THIS stack's embedding server (the index
+  # One-off: builds the index of every pinned snapshot with THIS stack's embedding server (the index
   # fingerprint must come from the serving platform). Needs the data directory writable.
   #   docker compose --profile index run --rm codetrail-index
   codetrail-index:
@@ -97,7 +97,8 @@ services:
       # two slots, so one large input per slot ≈ 121 s; 300 s leaves ≈ 2.5× headroom. Queries are unaffected.
       CODETRAIL_EMBED_BATCH_SIZE: "${CODETRAIL_EMBED_BATCH_SIZE:-1}"
       CODETRAIL_EMBED_DOC_TIMEOUT_MS: "${CODETRAIL_EMBED_DOC_TIMEOUT_MS:-300000}"
-    entrypoint: ["sh", "-c", 'exec node dist/cli.js index "$${CODETRAIL_PUBLIC_PIN%%:*}" "$${CODETRAIL_PUBLIC_PIN#*:}"']
+    # One index per pinned project:snapshot pair, in order; stops at the first failure (a rerun resumes from the cache).
+    entrypoint: ["sh", "-c", 'for pin in $$(printf %s "$${CODETRAIL_PUBLIC_PIN}" | tr "," " "); do node dist/cli.js index "$${pin%%:*}" "$${pin#*:}" || exit 1; done']
     volumes:
       - "${CODETRAIL_MODELS_HOST_DIR:?set CODETRAIL_MODELS_HOST_DIR}:/models:ro"
       - "${CODETRAIL_DATA_HOST_DIR:?set CODETRAIL_DATA_HOST_DIR}:/data:rw"

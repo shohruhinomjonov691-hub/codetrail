@@ -413,7 +413,7 @@ describe('HTTP API (internal, unpinned module) and UI bundle', () => {
 		expect(page.status).toBe(200);
 		expect(page.headers.get('content-security-policy')).toContain("script-src 'self'");
 		expect(await page.text()).toContain('id="send-btn"');
-		for (const p of ['/app.js', '/highlight.js', '/i18n.js', '/errors.js', '/style.css']) expect((await fetch(`${base}${p}`)).status).toBe(200);
+		for (const p of ['/app.js', '/highlight.js', '/i18n.js', '/errors.js', '/time.js', '/style.css']) expect((await fetch(`${base}${p}`)).status).toBe(200);
 		for (const p of ['/../package.json', '/web/app.js', '/.env', '/src/cli.ts']) expect((await fetch(`${base}${p}`)).status).toBe(404);
 	});
 

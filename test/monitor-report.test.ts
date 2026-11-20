@@ -9,6 +9,7 @@ import { appendFileSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { createServer, type IncomingMessage, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { join } from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import type { AnswerService } from '../src/answer/service.js';
 import { withLock } from '../src/lock.js';
@@ -504,5 +505,33 @@ describe('web UI wiring', () => {
 		const unique = [...new Set(keys)];
 		expect(unique.length).toBeGreaterThan(25);
 		for (const k of unique) expect(i18n.split(`'${k}':`).length - 1, k).toBe(2);
+	});
+});
+
+describe('Monitor table presentation', () => {
+	const web = join(import.meta.dirname, '..', 'web');
+	it('project names never break inside a word', () => {
+		const css = readFileSync(join(web, 'style.css'), 'utf8');
+		const rule = /\.monitor-name\s*\{([^}]*)\}/.exec(css)?.[1] ?? '';
+		expect(rule).toMatch(/word-break:\s*normal/);
+		expect(rule).toMatch(/overflow-wrap:\s*normal/);
+		expect(rule).not.toMatch(/anywhere|break-all|break-word/);
+	});
+
+	it('the time column is short: "01:43 KST" today, the date only when it is not today', async () => {
+		const { kstShort } = (await import(pathToFileURL(join(web, 'time.js')).href)) as { kstShort: (iso: string, now: number, locale?: string) => string };
+		const now = Date.parse('2026-11-20T17:00:00Z'); // 2026-11-21 02:00 in Seoul
+		expect(kstShort('2026-11-20T16:43:00Z', now)).toBe('01:43 KST'); // same Seoul day (the UTC date differs)
+		expect(kstShort('2026-11-20T14:59:00Z', now)).toBe('20 Nov, 23:59 KST'); // 23:59 on the 20th in Seoul
+		expect(kstShort('2026-11-18T00:00:00Z', now)).toBe('18 Nov, 09:00 KST');
+		expect(kstShort('2026-11-21T00:05:00Z', Date.parse('2026-11-21T00:10:00Z'))).toBe('09:05 KST');
+		expect(kstShort('not a date', now)).toBe('—');
+		expect(kstShort('2026-11-20T16:43:00Z', now)).not.toMatch(/\d{4}|:\d\d:\d\d/); // no year, no seconds
+	});
+
+	it('the table uses the short time and the page serves the module', () => {
+		const js = readFileSync(join(web, 'app.js'), 'utf8');
+		expect(js).toContain("import { kstShort } from './time.js'");
+		expect(js).toMatch(/const when = kstShort\(report\.at/);
 	});
 });

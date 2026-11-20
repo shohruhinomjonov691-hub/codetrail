@@ -1,5 +1,6 @@
 import { renderCode } from './highlight.js';
 import { errorKeys } from './errors.js';
+import { kstShort } from './time.js';
 import { DEFAULT_LANG, DICT, LANGS } from './i18n.js';
 
 const LANG_KEY = 'codetrail.lang';
@@ -756,7 +757,7 @@ function monitorTable(report) {
 	thead.append(head);
 	table.append(thead);
 	const body = el('tbody');
-	const when = monitorTime(report.at);
+	const when = kstShort(report.at, Date.now(), state.lang === 'ko' ? 'ko-KR' : 'en-GB');
 	for (const p of report.projects) {
 		const row = el('tr', `monitor-row monitor-${p.status}`);
 		const status = el('td', 'monitor-status');

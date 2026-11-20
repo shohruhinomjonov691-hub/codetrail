@@ -5,18 +5,22 @@ const KEYWORDS = new Set(
 		'false finally for from function get if implements import in instanceof interface let new null of private protected public readonly return ' +
 		'satisfies set static super switch this throw true try type typeof undefined var void while with yield').split(' '),
 );
-const CODE_LANGS = new Set(['typescript', 'tsx', 'javascript', 'jsx', 'graphql']);
+const CODE_LANGS = new Set(['typescript', 'tsx', 'javascript', 'jsx', 'graphql', 'python']);
+const PY_KEYWORDS = new Set(('and as assert async await break class continue def del elif else except finally for from global if import in is lambda nonlocal not or pass raise return try while with yield True False None self cls').split(' '));
 
 const STRING = /("(?:\\.|[^"\\\n])*"|'(?:\\.|[^'\\\n])*'|`(?:\\.|[^`\\])*`)/.source;
 const REST = /|(\b\d[\d_]*(?:\.\d+)?\b)|([A-Za-z_$][\w$]*)/.source;
 // JS/TS: `#` starts a private name, not a comment. GraphQL: `#` starts a comment.
 const TOKEN_JS = new RegExp(/(\/\/[^\n]*|\/\*[\s\S]*?\*\/)|/.source + STRING + REST, 'g');
 const TOKEN_GQL = new RegExp(/(#[^\n]*)|/.source + STRING + REST, 'g');
+// Python: `#` starts a comment; triple-quoted strings are matched before single-quoted ones.
+const TOKEN_PY = new RegExp(/(#[^\n]*)|/.source + /("""[\s\S]*?"""|'''[\s\S]*?'''|"(?:\\.|[^"\\\n])*"|'(?:\\.|[^'\\\n])*')/.source + REST, 'g');
 
 /** Splits code into [{text, cls}] tokens. */
 export function tokenize(code, language) {
 	if (!CODE_LANGS.has(language)) return [{ text: code, cls: '' }];
-	const re = language === 'graphql' ? TOKEN_GQL : TOKEN_JS;
+	const re = language === 'graphql' ? TOKEN_GQL : language === 'python' ? TOKEN_PY : TOKEN_JS;
+	const keywords = language === 'python' ? PY_KEYWORDS : KEYWORDS;
 	const out = [];
 	let last = 0;
 	for (const m of code.matchAll(re)) {
@@ -25,7 +29,7 @@ export function tokenize(code, language) {
 		if (comment) out.push({ text, cls: 'tok-comment' });
 		else if (string) out.push({ text, cls: 'tok-string' });
 		else if (number) out.push({ text, cls: 'tok-number' });
-		else if (word && KEYWORDS.has(word)) out.push({ text, cls: 'tok-keyword' });
+		else if (word && keywords.has(word)) out.push({ text, cls: 'tok-keyword' });
 		else if (word && /^[A-Z]/.test(word)) out.push({ text, cls: 'tok-type' });
 		else out.push({ text, cls: '' });
 		last = m.index + text.length;

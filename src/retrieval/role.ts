@@ -12,7 +12,7 @@ import type { Language } from '../chunker/index.js';
 export type ChunkRole = 'implementation' | 'test' | 'doc' | 'data';
 
 const TEST_DIR = /(^|\/)(__tests__|__mocks__|tests?|specs?|e2e)\//i;
-const TEST_FILE = /\.(test|spec)\.[cm]?[jt]sx?$/i;
+const TEST_FILE = /(\.(test|spec)\.[cm]?[jt]sx?|(^|\/)test_[^/]*\.py|_test\.py|(^|\/)conftest\.py)$/i;
 
 export function chunkRole(path: string, language: Language): ChunkRole {
 	if (language === 'markdown') return 'doc';

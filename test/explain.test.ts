@@ -429,14 +429,16 @@ describe('HTTP API (internal, unpinned module) and UI bundle', () => {
 		expect(JSON.parse(projects)).toMatchObject({ ai: { available: true, model: 'gpt-6-luna' } });
 	});
 
-	it('the UI has no project picker or repository input and never sends a project id', () => {
+	it('the UI offers a picker of the served projects but no repository or file input, and sends only the selected project id', () => {
 		const web = join(import.meta.dirname, '..', 'web');
 		const html = readFileSync(join(web, 'index.html'), 'utf8');
 		const app = readFileSync(join(web, 'app.js'), 'utf8');
+		expect(html).toContain('id="project-list"');
 		expect(html).not.toMatch(/<select|type="file"|repo(sitory)? ?url/i);
-		expect(app).not.toContain('project_id');
-		// the only request payload is the question, the answer language and earlier questions (snapshot_id is shown, never sent)
-		expect(app).toContain("{ question, language: state.lang, previous_questions }");
+		// the request payload is the selected project's id, the question, the answer language and earlier questions
+		// (snapshot_id is shown, never sent; the project id comes from the server's own list)
+		expect(app).toContain('{ project_id: project.project_id, question, language: state.lang, previous_questions }');
+		expect(app).not.toMatch(/project_id\s*:\s*['"`]/);
 		// earlier questions are the user's own messages only — earlier AI answers are never sent back
 		const prev = app.slice(app.indexOf('function previousQuestions'), app.indexOf('// ---------- conversation rendering'));
 		expect(prev).toContain(".filter((m) => m.role === 'user')");
@@ -444,7 +446,7 @@ describe('HTTP API (internal, unpinned module) and UI bundle', () => {
 		expect(prev).toContain('.map((m) => m.text)');
 		expect(app).toContain('const MAX_PREVIOUS = 2;');
 		// the conversation lives in memory only
-		expect(app).not.toMatch(/(local|session)Storage\.setItem\((?!LANG_KEY)/);
+		expect(app).not.toMatch(/(local|session)Storage\.setItem\((?!LANG_KEY|PROJECT_KEY)/);
 		expect(app).not.toMatch(/indexedDB/);
 		expect(app).not.toMatch(/snapshot_id\s*:/);
 	});

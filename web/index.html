@@ -4,7 +4,7 @@
 	<meta charset="utf-8">
 	<meta name="viewport" content="width=device-width, initial-scale=1">
 	<meta name="color-scheme" content="dark">
-	<title>CodeTrail · GoTrip</title>
+	<title>CodeTrail</title>
 	<link rel="icon" href="data:,">
 	<link rel="stylesheet" href="/style.css">
 	<script type="module" src="/app.js"></script>
@@ -16,13 +16,10 @@
 				<span class="brand-name">Code<span class="brand-accent">Trail</span></span>
 				<svg class="brand-mark" viewBox="0 0 32 32" aria-hidden="true"><path d="M7 26c4-1 4-6 8-8s6-3 7-7 2-5 3-6" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-dasharray="0.1 4.2"/><circle cx="7" cy="26" r="2.6"/><circle cx="25" cy="5" r="2.6"/></svg>
 			</div>
-			<div class="project-card">
-				<svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="10" width="14" height="10" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3" fill="none"/></svg>
-				<div>
-					<strong id="project-name" data-i18n="project.name"></strong>
-					<span class="muted" data-i18n="project.readonly"></span>
-				</div>
-			</div>
+			<section class="projects" aria-labelledby="projects-title">
+				<h2 class="side-label" id="projects-title" data-i18n="projects.title"></h2>
+				<ul class="project-list" id="project-list" data-i18n-aria="projects.label"></ul>
+			</section>
 			<nav class="nav" data-i18n-aria="nav.label">
 				<button type="button" class="nav-btn nav-new" id="new-chat">
 					<svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14" fill="none"/></svg>
@@ -51,6 +48,8 @@
 
 		<main class="main" id="main">
 			<div class="status-bar" role="group" data-i18n-aria="status.label">
+					<span class="status-item active-project" id="active-project"><span class="dot"></span><span class="status-text"></span></span>
+					<span class="status-sep" aria-hidden="true"></span>
 				<span class="status-item" id="search-status"><span class="dot"></span><span class="status-text"></span></span>
 				<span class="status-sep" aria-hidden="true"></span>
 				<span class="status-item" id="ai-status"><span class="dot"></span><span class="status-text"></span></span>

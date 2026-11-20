@@ -1,4 +1,4 @@
-export const CHUNKER_VERSION = 4;
+export const CHUNKER_VERSION = 5;
 
 /** Hard limits every emitted chunk respects. */
 export const CHUNK_LIMITS = {
@@ -22,7 +22,7 @@ export type ChunkKind =
 	| 'schema'
 	| 'text';
 
-export type Language = 'typescript' | 'tsx' | 'javascript' | 'jsx' | 'json' | 'markdown' | 'yaml' | 'graphql';
+export type Language = 'typescript' | 'tsx' | 'javascript' | 'jsx' | 'python' | 'json' | 'markdown' | 'yaml' | 'graphql';
 
 /** A chunk before ids/metadata are attached: just a line range and labels. */
 export interface RawChunk {

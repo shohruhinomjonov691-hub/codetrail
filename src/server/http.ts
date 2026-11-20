@@ -1,7 +1,8 @@
 import { readFileSync } from 'node:fs';
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
 import { fileURLToPath } from 'node:url';
-import { AnswerService, parseLanguage, RequestCancelledError, SearchUnavailableError } from '../answer/service.js';
+import { AnswerService, parseLanguage, RequestCancelledError, SearchUnavailableError, type ExplainResponse } from '../answer/service.js';
+import type { ProjectStatus } from '../catalog.js';
 import { CodeTrailError } from '../errors.js';
 import { assertId, assertSnapshotId } from '../ids.js';
 
@@ -34,12 +35,29 @@ export function parsePublicPin(raw: string | undefined): PublicPin {
 	return { project_id: assertId('project', project), snapshot_id: assertSnapshotId(snapshot) };
 }
 
+/**
+ * Parses CODETRAIL_PUBLIC_PIN: one "project:snapshot" or a comma-separated list of them
+ * (at most 12, each project once). The server answers for exactly these.
+ */
+export function parsePublicPins(raw: string | undefined): PublicPin[] {
+	const parts = (raw ?? '').split(',').map((p) => p.trim()).filter(Boolean);
+	if (parts.length === 0 || parts.length > 12) throw new CodeTrailError('USAGE', 'CODETRAIL_PUBLIC_PIN must list 1-12 "<project_id>:<snapshot_id>" entries');
+	const pins = parts.map((p) => parsePublicPin(p));
+	if (new Set(pins.map((p) => p.project_id)).size !== pins.length) throw new CodeTrailError('USAGE', 'CODETRAIL_PUBLIC_PIN lists a project twice');
+	return pins;
+}
+
 export interface ServerOptions {
 	/**
-	 * Public mode: the server answers for this project and snapshot only. A request
-	 * may omit project_id/snapshot_id; any other value is refused (403).
+	 * Public mode: the server answers for these projects/snapshots only. With one pin a request
+	 * may omit project_id/snapshot_id; with several, project_id is required. Any other project
+	 * or snapshot is refused (403).
 	 */
-	pinned?: PublicPin;
+	pinned?: PublicPin | readonly PublicPin[];
+	/** State of every catalog project for the project picker (ready / indexing / error). */
+	catalog?: () => ProjectStatus[];
+	/** Requests per client per minute across /api/search, /api/explain and /api/chat (default 60). */
+	requestsPerMinute?: number;
 	/** Directory with the static UI (default: <repo>/web). */
 	webDir?: string;
 	/** Use the first X-Forwarded-For address as the client id (only behind a trusted proxy). */
@@ -47,6 +65,8 @@ export interface ServerOptions {
 	/** One line per request; never receives questions, prompts, code or keys. */
 	log?: (line: string) => void;
 }
+
+const describe = (result: ExplainResponse): string => `mode=${result.mode}${result.reason ? ` reason=${result.reason}` : ''}${result.cached ? ' cached' : ''} evidence=${result.evidence}`;
 
 class HttpError extends Error {
 	constructor(
@@ -83,12 +103,49 @@ async function readJson(req: IncomingMessage): Promise<Record<string, unknown>> 
 	return parsed as Record<string, unknown>;
 }
 
-/** In public mode only the pinned project/snapshot may be addressed (omitting them means the pinned ones). */
-function scope(body: Record<string, unknown>, pinned: PublicPin | undefined): { project_id: unknown; snapshot_id: unknown } {
-	if (!pinned) return { project_id: body.project_id, snapshot_id: body.snapshot_id };
-	if (body.project_id !== undefined && body.project_id !== pinned.project_id) throw new HttpError(403, 'PROJECT_NOT_ALLOWED', 'This server answers only for its configured project');
-	if (body.snapshot_id !== undefined && body.snapshot_id !== pinned.snapshot_id) throw new HttpError(403, 'SNAPSHOT_NOT_ALLOWED', 'This server answers only for its configured snapshot');
-	return { project_id: pinned.project_id, snapshot_id: pinned.snapshot_id };
+/**
+ * In public mode only pinned projects/snapshots may be addressed. One pin: omitting
+ * project_id means that project. Several pins: project_id is required.
+ */
+function scope(body: Record<string, unknown>, pins: readonly PublicPin[] | undefined): { project_id: unknown; snapshot_id: unknown } {
+	if (!pins) return { project_id: body.project_id, snapshot_id: body.snapshot_id };
+	let pin: PublicPin | undefined;
+	if (body.project_id === undefined) {
+		if (pins.length !== 1) throw new HttpError(400, 'USAGE', 'project_id is required');
+		pin = pins[0];
+	} else pin = pins.find((p) => p.project_id === body.project_id);
+	if (!pin) throw new HttpError(403, 'PROJECT_NOT_ALLOWED', 'This server does not answer for that project');
+	if (body.snapshot_id !== undefined && body.snapshot_id !== pin.snapshot_id) throw new HttpError(403, 'SNAPSHOT_NOT_ALLOWED', 'This server answers only for its configured snapshot');
+	return { project_id: pin.project_id, snapshot_id: pin.snapshot_id };
+}
+
+/** Sliding one-minute window per client. */
+class RequestWindow {
+	private readonly hits = new Map<string, number[]>();
+	constructor(private readonly perMinute: number) {}
+	allow(client: string, now = Date.now()): boolean {
+		const recent = (this.hits.get(client) ?? []).filter((t) => now - t < 60_000);
+		if (recent.length >= this.perMinute) {
+			this.hits.set(client, recent);
+			return false;
+		}
+		recent.push(now);
+		this.hits.set(client, recent);
+		if (this.hits.size > 10_000) for (const [k, v] of this.hits) if (v.every((t) => now - t >= 60_000)) this.hits.delete(k);
+		return true;
+	}
+}
+
+/**
+ * Client id for rate limits. Behind a trusted proxy the LAST X-Forwarded-For entry is the address the
+ * proxy itself saw; earlier entries are whatever the client sent and can be forged to dodge limits.
+ */
+export function clientId(req: Pick<IncomingMessage, 'headers' | 'socket'>, trustProxy: boolean): string {
+	if (trustProxy) {
+		const parts = String(req.headers['x-forwarded-for'] ?? '').split(',').map((p) => p.trim()).filter(Boolean);
+		if (parts.length) return parts[parts.length - 1] as string;
+	}
+	return req.socket.remoteAddress || 'unknown';
 }
 
 function errorStatus(err: unknown): { status: number; code: string; message: string } {
@@ -111,6 +168,8 @@ function errorStatus(err: unknown): { status: number; code: string; message: str
 export function createHttpServer(service: AnswerService, options: ServerOptions = {}): Server {
 	const webDir = options.webDir ?? fileURLToPath(new URL('../../web/', import.meta.url));
 	const log = options.log ?? (() => {});
+	const pins = options.pinned === undefined ? undefined : Array.isArray(options.pinned) ? (options.pinned as readonly PublicPin[]) : [options.pinned as PublicPin];
+	const requestWindow = new RequestWindow(options.requestsPerMinute ?? 60);
 	const server = createServer((req, res) => {
 		const started = Date.now();
 		let note = '';
@@ -126,30 +185,60 @@ export function createHttpServer(service: AnswerService, options: ServerOptions 
 					return done(200);
 				}
 				if (req.method === 'GET' && path === '/api/projects') {
-					const projects = options.pinned ? service.list().filter((p) => p.project_id === options.pinned!.project_id && p.snapshot_id === options.pinned!.snapshot_id) : service.list();
-					send(res, 200, { projects, pinned: Boolean(options.pinned), ai: { available: service.generationModel !== null, model: service.generationModel } });
+					const projects = pins ? service.list().filter((p) => pins.some((pin) => pin.project_id === p.project_id && pin.snapshot_id === p.snapshot_id)) : service.list();
+					const catalog = options.catalog ? options.catalog() : projects.map((p): ProjectStatus => ({ project_id: p.project_id, name: p.name, state: 'ready', reason: null, snapshot_id: p.snapshot_id, chunks: p.chunks, sources: p.sources }));
+					send(res, 200, { projects, catalog, pinned: Boolean(pins), ai: { available: service.generationModel !== null, model: service.generationModel } });
 					return done(200);
 				}
-				if (path === '/api/search' || path === '/api/explain') {
+				if (path === '/api/search' || path === '/api/explain' || path === '/api/chat') {
 					if (req.method !== 'POST') throw new HttpError(405, 'METHOD_NOT_ALLOWED', 'Use POST');
 					const body = await readJson(req);
-					const target = scope(body, options.pinned);
+					const target = scope(body, pins);
 					const language = parseLanguage(body.language); // only "en" | "ko" (default "en")
+					const client = clientId(req, options.trustProxy === true);
+					if (!requestWindow.allow(client)) {
+						note = 'rate_limited';
+						throw new HttpError(429, 'RATE_LIMITED', 'Too many requests');
+					}
 					if (path === '/api/search') {
 						send(res, 200, await service.search(target.project_id, body.question, target.snapshot_id, body.previous_questions));
 						return done(200);
 					}
-					const forwarded = options.trustProxy ? String(req.headers['x-forwarded-for'] ?? '').split(',')[0]?.trim() : '';
-					const client = forwarded || req.socket.remoteAddress || 'unknown';
 					// A client that disconnects cancels its explanation (queued calls never reach the provider).
 					const cancel = new AbortController();
 					res.on('close', () => {
 						if (!res.writableEnded) cancel.abort();
 					});
-					const result = await service.explain(target.project_id, body.question, client, target.snapshot_id, cancel.signal, language, body.previous_questions);
-					note = `mode=${result.mode}${result.reason ? ` reason=${result.reason}` : ''}${result.cached ? ' cached' : ''}`;
-					send(res, 200, result);
-					return done(200);
+					if (path === '/api/explain') {
+						const result = await service.explain(target.project_id, body.question, client, target.snapshot_id, cancel.signal, language, body.previous_questions);
+						note = describe(result);
+						send(res, 200, result);
+						return done(200);
+					}
+					// /api/chat: server-sent events. Everything that can be a 4xx is checked before the stream starts.
+					service.check(target.project_id, body.question, target.snapshot_id, body.previous_questions);
+					res.writeHead(200, { ...SECURITY_HEADERS, 'Content-Type': 'text/event-stream; charset=utf-8', 'Cache-Control': 'no-store', 'X-Accel-Buffering': 'no', Connection: 'keep-alive' });
+					const emit = (event: string, data: unknown): void => {
+						if (!res.destroyed && !res.writableEnded) res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
+					};
+					const beat = setInterval(() => !res.destroyed && !res.writableEnded && res.write(': ping\n\n'), 10_000);
+					try {
+						const result = await service.explain(target.project_id, body.question, client, target.snapshot_id, cancel.signal, language, body.previous_questions, (phase) => emit('phase', { phase }));
+						note = describe(result);
+						// The answer is complete and validated; `streaming` is the client revealing it.
+						emit('phase', { phase: 'streaming' });
+						emit('result', result);
+						return done(200);
+					} catch (err) {
+						if (err instanceof RequestCancelledError) throw err;
+						const e = errorStatus(err);
+						if (e.status === 500) note = `error=${err instanceof Error ? err.name : 'unknown'}`;
+						emit('error', { code: e.code });
+						return done(e.status);
+					} finally {
+						clearInterval(beat);
+						if (!res.writableEnded) res.end();
+					}
 				}
 				throw new HttpError(404, 'NOT_FOUND', 'Not found');
 			} catch (err) {

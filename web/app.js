@@ -52,9 +52,21 @@ function storedLang() {
 	}
 }
 
+const PROJECT_KEY = 'codetrail.project';
+const reducedMotion = () => window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+const PHASES = ['searching', 'analyzing', 'thinking', 'streaming'];
+
 const state = {
 	lang: storedLang(),
+	/** The selected (served, ready) project, or null. */
 	project: null,
+	/** Every catalog project with its index state (ready / indexing / error), refreshed from /api/projects. */
+	catalog: [],
+	/** project_id → served project (only projects this server can answer for). */
+	served: new Map(),
+	/** Conversations of the projects that are not selected, kept in this tab's memory only. */
+	chats: {},
+	timers: new Set(),
 	ai: { available: false, model: null },
 	/** null until known; false after the search service failed, true after it answered. */
 	searchOk: null,
@@ -71,8 +83,9 @@ const state = {
 };
 
 function t(key, vars = {}) {
+	const all = { project: state.project?.name ?? 'CodeTrail', ...vars };
 	const value = DICT[state.lang][key] ?? DICT.en[key] ?? key;
-	return typeof value === 'string' ? value.replace(/\{(\w+)\}/g, (_, k) => String(vars[k] ?? '')) : value;
+	return typeof value === 'string' ? value.replace(/\{(\w+)\}/g, (_, k) => String(all[k] ?? '')) : value;
 }
 
 const shortCommit = (commit) => commit.slice(0, 12);
@@ -108,9 +121,11 @@ function setLang(lang) {
 
 function renderChips() {
 	const box = $('chips');
-	const titles = t('examples.titles');
+	// The four tuned examples are about GoTrip's code; every other project gets generic ones.
+	const own = state.project?.project_id === 'gotrip' ? '' : '.generic';
+	const titles = t(`examples${own}.titles`);
 	box.replaceChildren(
-		...t('examples.items').map((q, i) => {
+		...t(`examples${own}.items`).map((q, i) => {
 			// A native button inside a list item: announced as a button, grouped as a list.
 			const item = el('li');
 			const chip = el('button', 'chip');
@@ -130,6 +145,41 @@ function renderChips() {
 	);
 }
 
+function stateText(c) {
+	return t(`projects.state.${c.state}`);
+}
+
+function reasonText(c) {
+	if (!c.reason) return '';
+	const key = `projects.reason.${c.reason}`;
+	return t(key) === key ? t('projects.reason.unknown') : t(key);
+}
+
+function renderProjects() {
+	const list = $('project-list');
+	list.replaceChildren(
+		...state.catalog.map((c) => {
+			const item = el('li');
+			const usable = c.state === 'ready' && state.served.has(c.project_id);
+			const btn = el('button', `project-btn st-${c.state}`);
+			btn.type = 'button';
+			btn.dataset.project = c.project_id;
+			if (state.project?.project_id === c.project_id) btn.setAttribute('aria-current', 'true');
+			if (!usable) btn.setAttribute('aria-disabled', 'true');
+			const detail = c.state === 'error' ? ` — ${reasonText(c)}` : '';
+			btn.title = `${c.name}: ${stateText(c)}${detail}`;
+			btn.append(el('span', 'dot'), el('span', 'project-name', c.name), el('span', 'project-state', `${stateText(c)}${detail}`));
+			btn.addEventListener('click', () => usable && selectProject(c.project_id));
+			item.append(btn);
+			return item;
+		}),
+	);
+	const active = state.catalog.find((c) => c.project_id === state.project?.project_id);
+	const chip = $('active-project');
+	chip.className = `status-item active-project st-${active?.state ?? 'error'}`;
+	chip.querySelector('.status-text').replaceChildren(document.createTextNode(`${t('projects.active')}: `), el('strong', '', active?.name ?? '—'), document.createTextNode(` · ${active ? stateText(active) : t('projects.state.error')}`));
+}
+
 function renderStatus() {
 	const set = (id, ok, okKey, offKey) => {
 		const node = $(id);
@@ -141,6 +191,7 @@ function renderStatus() {
 	set('ai-status', state.ai.available, 'status.aiOn', 'status.aiOff');
 	$('ai-status').classList.toggle('ai', state.ai.available);
 	$('ai-off-note').hidden = state.ai.available || !state.project;
+	renderProjects();
 	updateButtons();
 }
 
@@ -218,6 +269,31 @@ function previousQuestions() {
 
 // ---------- conversation rendering ----------
 
+function evidenceBadge(evidence) {
+	const badge = el('span', `evidence ev-${evidence}`, t(`evidence.${evidence}`));
+	badge.title = t(`evidence.hint.${evidence}`);
+	return badge;
+}
+
+/** Progress list: done / current / pending steps (Searching, Analyzing, Thinking, Streaming). */
+function phaseList(current) {
+	const ol = el('ol', 'phases');
+	ol.setAttribute('aria-label', t('phase.label'));
+	const at = PHASES.indexOf(current);
+	PHASES.forEach((p, i) => {
+		const li = el('li', `phase${i < at ? ' done' : i === at ? ' current' : ''}`, t(`phase.${p}`));
+		if (i === at) li.setAttribute('aria-current', 'step');
+		ol.append(li);
+	});
+	return ol;
+}
+
+function loadingCard(msg) {
+	const card = notice('loading', t(msg.explain ? 'status.explaining' : 'status.searching'));
+	if (msg.explain) card.querySelector('div').append(phaseList(msg.phase ?? 'searching'));
+	return card;
+}
+
 function notice(kind, title, body) {
 	const card = el('div', `notice notice-${kind}`);
 	card.setAttribute('role', kind === 'error' ? 'alert' : 'status');
@@ -270,9 +346,19 @@ function answerCard(msg) {
 	const res = msg.res;
 	const card = el('article', 'answer-card');
 	if (res.language !== state.lang) card.append(el('p', 'lang-note', t('answer.langNote')));
+	if (msg.reveal != null) card.append(phaseList('streaming'));
+	const evidence = el('div', 'evidence-row');
+	evidence.append(evidenceBadge(res.evidence ?? 'grounded'), el('p', 'evidence-hint', t(`evidence.hint.${res.evidence ?? 'grounded'}`)));
+	card.append(evidence);
 	// One short answer: each sentence followed by a compact button for its source.
-	const body = el('p', 'answer-text');
+	const body = el('p', `answer-text${msg.reveal != null ? ' caret' : ''}`);
+	// While the validated answer is revealed, only the first `remaining` characters are shown.
+	let remaining = msg.reveal ?? Infinity;
 	res.claims.forEach((c, i) => {
+		if (remaining <= 0) return;
+		const full = remaining >= c.text.length + 1;
+		const shown = full ? c.text : c.text.slice(0, remaining);
+		remaining -= c.text.length + 1;
 		const idx = msg.cite.claimSource[i];
 		const src = msg.cite.sources[idx];
 		const loc = `${src.path.split('/').pop()}:L${src.mark.start}–${src.mark.end}`;
@@ -283,7 +369,8 @@ function answerCard(msg) {
 		btn.setAttribute('aria-label', t('answer.sourceLabel', { n: idx + 1, loc }));
 		btn.addEventListener('click', () => openSource(msg.id, 'cite', idx, btn));
 		const sentence = el('span', 'claim');
-		sentence.append(richText(c.text), document.createTextNode(' '), btn);
+		sentence.append(richText(shown), document.createTextNode(' '));
+		if (full) sentence.append(btn);
 		body.append(sentence, document.createTextNode(' '));
 	});
 	card.append(body);
@@ -315,6 +402,10 @@ function resultBody(msg) {
 		box.append(answerCard(msg));
 		return box;
 	}
+	const evidence = res.evidence ?? (res.hits.length ? 'unverified' : 'none');
+	const row = el('div', 'evidence-row');
+	row.append(evidenceBadge(evidence), el('p', 'evidence-hint', t(`evidence.hint.${evidence}`)));
+	box.append(row);
 	if (res.hits.length === 0 && res.mode !== 'insufficient') box.append(notice('info', t('status.empty.title'), t('status.empty.body')));
 	else if (res.mode === 'insufficient') box.append(notice('info', t('status.insufficient.title'), t('status.insufficient.body')));
 	else if (res.mode === 'fallback') {
@@ -343,7 +434,7 @@ function renderMessage(msg) {
 		return li;
 	}
 	const body = el('div', 'msg-body');
-	if (msg.kind === 'loading') body.append(notice('loading', t(msg.explain ? 'status.explaining' : 'status.searching')));
+	if (msg.kind === 'loading') body.append(loadingCard(msg));
 	else if (msg.kind === 'stopped') body.append(el('p', 'stopped', t('stopped')));
 	else if (msg.kind === 'error') body.append(notice('error', t(msg.err.titleKey), msg.err.bodyKey ? t(msg.err.bodyKey) : undefined));
 	else body.append(resultBody(msg));
@@ -600,6 +691,91 @@ async function call(path, body, signal) {
 	return data;
 }
 
+const aborted = () => Object.assign(new Error('aborted'), { code: 'ABORTED' });
+const networkError = () => Object.assign(new Error('network'), { code: 'NETWORK' });
+
+/** POST /api/chat (server-sent events): phases as they happen, then the validated result. */
+async function streamChat(body, signal, onPhase) {
+	let res;
+	try {
+		res = await fetch('/api/chat', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body), signal });
+	} catch {
+		throw signal.aborted ? aborted() : networkError();
+	}
+	if (!res.ok) {
+		let data = null;
+		try {
+			data = await res.json();
+		} catch {
+			/* no JSON body */
+		}
+		throw Object.assign(new Error('request failed'), { code: data?.error?.code ?? `HTTP_${res.status}` });
+	}
+	let result = null;
+	const handle = (block) => {
+		let event = 'message';
+		let data = '';
+		for (const line of block.split('\n')) {
+			if (line.startsWith('event:')) event = line.slice(6).trim();
+			else if (line.startsWith('data:')) data += line.slice(5).trim();
+		}
+		if (!data) return; // a ": ping" keep-alive
+		const parsed = JSON.parse(data);
+		if (event === 'phase') onPhase(parsed.phase);
+		else if (event === 'result') result = parsed;
+		else if (event === 'error') throw Object.assign(new Error('request failed'), { code: parsed.code ?? 'INTERNAL' });
+	};
+	try {
+		const reader = res.body.getReader();
+		const decoder = new TextDecoder();
+		let buf = '';
+		for (;;) {
+			const { done, value } = await reader.read();
+			if (done) break;
+			buf += decoder.decode(value, { stream: true });
+			let i;
+			while ((i = buf.indexOf('\n\n')) >= 0) {
+				const block = buf.slice(0, i);
+				buf = buf.slice(i + 2);
+				handle(block);
+			}
+		}
+	} catch (err) {
+		if (err.code) throw err;
+		throw signal.aborted ? aborted() : networkError();
+	}
+	if (!result) throw signal.aborted ? aborted() : networkError();
+	return result;
+}
+
+/** Reveals the already validated answer progressively (the server answers whole; nothing shown here is unchecked). */
+function startReveal(msg) {
+	if (msg.res.mode !== 'answer') return; // search-only results have no claims
+	const total = msg.res.claims.reduce((n, c) => n + c.text.length + 1, 0);
+	if (total === 0 || reducedMotion()) return;
+	msg.reveal = 0;
+	const step = Math.max(2, Math.ceil(total / 80));
+	let handle;
+	const tick = () => {
+		state.timers.delete(handle);
+		msg.reveal += step;
+		if (msg.reveal >= total) msg.reveal = null;
+		updateMessage(msg);
+		if (msg.reveal != null) {
+			handle = setTimeout(tick, 18);
+			state.timers.add(handle);
+		}
+	};
+	handle = setTimeout(tick, 0);
+	state.timers.add(handle);
+}
+
+function clearTimers() {
+	for (const h of state.timers) clearTimeout(h);
+	state.timers.clear();
+	for (const m of state.messages) if (m.reveal != null) m.reveal = null;
+}
+
 async function run(kind) {
 	if (state.busy || !state.project) return;
 	const explain = kind === 'explain' && state.ai.available;
@@ -614,8 +790,9 @@ async function run(kind) {
 	renderFormError();
 	// Only earlier questions from this tab go along — earlier AI answers are never sent back.
 	const previous_questions = previousQuestions();
+	const project = state.project;
 	const user = { id: state.nextId++, role: 'user', text: question };
-	const reply = { id: state.nextId++, role: 'assistant', kind: 'loading', explain };
+	const reply = { id: state.nextId++, role: 'assistant', kind: 'loading', explain, phase: 'searching' };
 	state.messages.push(user, reply);
 	$('question').value = '';
 	autoGrow();
@@ -626,11 +803,18 @@ async function run(kind) {
 	renderMessages();
 	$(`msg-${user.id}`)?.scrollIntoView({ block: 'start' });
 	try {
-		// The server is pinned to one project/snapshot; the page sends the question, the answer
-		// language and up to two earlier questions — never a project id or an earlier answer.
-		const res = await call(explain ? '/api/explain' : '/api/search', { question, language: state.lang, previous_questions }, state.controller.signal);
+		// The page sends the selected project's id, the question, the answer language and up to two
+		// earlier questions of THIS project's conversation — never an earlier answer.
+		const body = { project_id: project.project_id, question, language: state.lang, previous_questions };
+		const res = explain
+			? await streamChat(body, state.controller.signal, (phase) => {
+					reply.phase = phase;
+					updateMessage(reply);
+				})
+			: await call('/api/search', body, state.controller.signal);
 		Object.assign(reply, { kind: 'result', res, cite: res.mode === 'answer' ? citationSources(res) : { sources: [], claimSource: [] }, hitSources: hitSources(res) });
 		state.searchOk = true;
+		if (state.project === project) startReveal(reply);
 	} catch (err) {
 		if (err.code === 'ABORTED') reply.kind = 'stopped';
 		else {
@@ -651,8 +835,32 @@ function stop() {
 	$('question').focus();
 }
 
+function selectProject(id) {
+	const next = state.served.get(id);
+	if (!next || state.project?.project_id === id) return;
+	state.controller?.abort();
+	clearTimers();
+	if (state.project) state.chats[state.project.project_id] = state.messages;
+	state.project = next;
+	state.messages = state.chats[id] ?? [];
+	state.panel = { kind: 'intro' };
+	state.formError = null;
+	releaseSheet();
+	try {
+		localStorage.setItem(PROJECT_KEY, id);
+	} catch {
+		/* private mode: the choice just isn't remembered */
+	}
+	$('question').placeholder = t(state.messages.length ? 'question.followUp' : 'question.placeholder');
+	applyStatic();
+	renderMessages();
+	renderPanel();
+	$('question').focus();
+}
+
 function newChat() {
 	state.controller?.abort();
+	clearTimers();
 	state.messages = [];
 	state.panel = { kind: 'intro' };
 	state.formError = null;
@@ -668,6 +876,15 @@ function autoGrow() {
 	const q = $('question');
 	q.style.height = 'auto';
 	q.style.height = `${Math.min(q.scrollHeight, 200)}px`;
+}
+
+async function loadProjects() {
+	const res = await fetch('/api/projects');
+	if (!res.ok) throw new Error(`HTTP ${res.status}`);
+	const data = await res.json();
+	state.served = new Map(data.projects.map((p) => [p.project_id, p]));
+	state.catalog = data.catalog ?? data.projects.map((p) => ({ project_id: p.project_id, name: p.name, state: 'ready', reason: null }));
+	return data;
 }
 
 async function init() {
@@ -699,12 +916,22 @@ async function init() {
 	renderPanel();
 	$('page-status').replaceChildren(notice('loading', t('status.loading')));
 	try {
-		const res = await fetch('/api/projects');
-		if (!res.ok) throw new Error(`HTTP ${res.status}`);
-		const data = await res.json();
-		state.project = data.projects.length === 1 ? data.projects[0] : null;
+		const data = await loadProjects();
+		let stored = null;
+		try {
+			stored = localStorage.getItem(PROJECT_KEY);
+		} catch {
+			/* no stored choice */
+		}
+		const ready = state.catalog.filter((c) => c.state === 'ready' && state.served.has(c.project_id));
+		const first = ready.find((c) => c.project_id === stored) ?? ready[0];
+		state.project = first ? state.served.get(first.project_id) : null;
 		state.ai = data.ai;
-		$('page-status').replaceChildren(...(state.project ? [] : [notice('error', t('error.request.title'), t('error.noProject'))]));
+		$('page-status').replaceChildren(...(state.project ? [] : [notice('error', t('error.request.title'), t('projects.none'))]));
+		// Indexing → Ready changes show up without a reload (the server must have loaded the index to serve it).
+		setInterval(() => {
+			if (!document.hidden) void loadProjects().then(() => renderStatus()).catch(() => {});
+		}, 30_000);
 	} catch {
 		$('page-status').replaceChildren(notice('error', t('error.request.title'), t('error.network')));
 	}

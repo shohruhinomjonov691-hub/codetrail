@@ -12,6 +12,7 @@ const BY_CODE = {
 	SNAPSHOT_NOT_ALLOWED: { titleKey: 'error.request.title', bodyKey: 'error.noProject' },
 	UNKNOWN_PROJECT: { titleKey: 'error.request.title', bodyKey: 'error.noProject' },
 	UNKNOWN_SNAPSHOT: { titleKey: 'error.request.title', bodyKey: 'error.noProject' },
+	RATE_LIMITED: { titleKey: 'error.request.title', bodyKey: 'error.rateLimited' },
 };
 const GENERIC = { titleKey: 'error.request.title', bodyKey: 'error.generic' };
 

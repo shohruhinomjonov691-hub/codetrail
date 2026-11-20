@@ -1,7 +1,7 @@
 import { isSafeRepoPath } from './paths.js';
 
 /** Bump when filtering behaviour changes: it is part of every snapshot id. */
-export const FILTER_VERSION = 2;
+export const FILTER_VERSION = 3;
 
 export const FILTER_LIMITS = {
 	/** Files larger than this are not indexed. */
@@ -23,6 +23,7 @@ export const ALLOWED_EXTENSIONS = [
 	'.jsx',
 	'.mjs',
 	'.cjs',
+	'.py',
 	'.json',
 	'.md',
 	'.mdx',
@@ -61,6 +62,16 @@ const DENY_DIRS = new Set([
 	'.idea',
 	'.vscode',
 	'__snapshots__',
+	// Python environments and caches
+	'.venv',
+	'venv',
+	'__pycache__',
+	'site-packages',
+	'.pytest_cache',
+	'.mypy_cache',
+	'.ruff_cache',
+	'.tox',
+	'.ipynb_checkpoints',
 ]);
 
 /** Exact file names that are never indexed. */
@@ -93,6 +104,8 @@ const DENY_PATTERNS: readonly RegExp[] = [
 	/\.min\.(js|mjs|cjs)$/i,
 	/\.(map|snap)$/i,
 	/\.d\.ts$/i,
+	/\.egg-info$/i,
+	/\.(pyc|pyo)$/i,
 	/\.(log|sql|sqlite|db|dump|bak)$/i,
 ];
 

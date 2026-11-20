@@ -12,7 +12,12 @@ import { loadFixture } from './eval/fixture.js';
 import { EVAL_MODES, renderMarkdown, runEvaluation, type EvalMode } from './eval/run.js';
 import { AnswerService } from './answer/service.js';
 import { createGenerationProvider, generationSettings } from './generation/config.js';
-import { createHttpServer, parsePublicPin } from './server/http.js';
+import { createHttpServer, parsePublicPins } from './server/http.js';
+import { projectStatuses, writeIndexStatus } from './catalog.js';
+import { loadMonitorConfig, monitorDir } from './monitor/config.js';
+import { keywordRag } from './monitor/rag.js';
+import { lastReport, runMonitor } from './monitor/run.js';
+import { telegramFromEnv } from './monitor/telegram.js';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { join as joinPath } from 'node:path';
 
@@ -33,8 +38,12 @@ Usage:
                    [--bm25-weights p,s,t,i] [--rrf-k n] [--pool n] [--out <dir>]
   codetrail serve   [--host 127.0.0.1] [--port 8080]       public HTTP API + UI for CODETRAIL_PUBLIC_PIN only
   codetrail explain <project_id> <question> [--language en|ko]   one AI explanation (calls OpenAI if configured)
+  codetrail monitor run    [--project <id>]... [--dry-run]       health + repo/log checks; Telegram alert on failures only
+  codetrail monitor watch  [--interval-sec 300] [--project <id>]...   repeat 'monitor run' until stopped
+  codetrail monitor status                                       the last run's report (redacted)
 
-Environment: CODETRAIL_DATA_DIR (default ./data), CODETRAIL_LOCAL_ROOTS (colon-separated),
+Environment: TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID (monitor alerts), CODETRAIL_MONITOR_CONFIG / CODETRAIL_MONITOR_DIR,
+CODETRAIL_DATA_DIR (default ./data), CODETRAIL_LOCAL_ROOTS (colon-separated),
 CODETRAIL_EMBED_URL, CODETRAIL_MODELS_DIR, CODETRAIL_PROVIDER_HOSTS (local embeddings), CODETRAIL_PUBLIC_PIN,
 CODETRAIL_OPENAI_API_KEY / CODETRAIL_OPENAI_MODEL / CODETRAIL_AI_* (answer generation; see .env.example).
 Output is JSON. File contents and secret values are never printed.`;
@@ -71,7 +80,8 @@ function print(value: unknown): void {
 async function main(argv: string[]): Promise<number> {
 	const config = loadConfig();
 	const registry = new Registry(config.dataDir);
-	const { positional, flags } = parse(argv);
+	const dryRun = argv.includes('--dry-run'); // the only boolean flag
+	const { positional, flags } = parse(argv.filter((a) => a !== '--dry-run'));
 	const [group, action, ...rest] = positional;
 	const one = (name: string): string | undefined => flags.get(name)?.at(-1);
 
@@ -127,8 +137,24 @@ async function main(argv: string[]): Promise<number> {
 		const [projectId, snapshotId] = need([action, ...rest].filter((v): v is string => v !== undefined), 2) as [string, string];
 		const settings = embeddingSettings();
 		const provider = await createEmbeddingProvider(config, settings);
-		const result = await buildIndex(config, projectId, snapshotId, provider);
-		print({ result: result.status, ...result.meta });
+		// The status file lets the server's project picker show Indexing / Ready / Error (codes only, no paths).
+		const started_at = new Date().toISOString();
+		const track = (state: 'indexing' | 'ready' | 'error', error_code: string | null): void => {
+			try {
+				writeIndexStatus(config.dataDir, projectId, { state, snapshot_id: snapshotId, pid: process.pid, started_at, finished_at: state === 'indexing' ? null : new Date().toISOString(), error_code });
+			} catch {
+				/* a read-only data directory must not break indexing */
+			}
+		};
+		track('indexing', null);
+		try {
+			const result = await buildIndex(config, projectId, snapshotId, provider);
+			track('ready', null);
+			print({ result: result.status, ...result.meta });
+		} catch (err) {
+			track('error', err instanceof CodeTrailError ? err.code : 'INDEX_FAILED');
+			throw err;
+		}
 		return 0;
 	}
 	if (group === 'search') {
@@ -177,24 +203,71 @@ async function main(argv: string[]): Promise<number> {
 		print({ project: result.project, snapshot_id: result.snapshot_id, index_id: result.index_id, k: result.k, tuning: result.tuning, modes: result.modes.map((m) => ({ mode: m.mode, ...m.overall })) });
 		return 0;
 	}
+	if (group === 'monitor') {
+		const stateDir = monitorDir(config.dataDir);
+		if (action === 'status') {
+			print(lastReport(stateDir) ?? { at: null, items: [], not_configured: [] });
+			return 0;
+		}
+		if (action !== 'run' && action !== 'watch') throw new CodeTrailError('USAGE', USAGE);
+		const only = flags.get('project');
+		const monitorConfig = loadMonitorConfig(config.dataDir);
+		const { rag, close } = keywordRag(config.dataDir, embeddingSettings().recipe);
+		const once = async (): Promise<void> => {
+			const report = await runMonitor({
+				dataDir: config.dataDir,
+				stateDir,
+				config: monitorConfig,
+				...(only ? { only } : {}),
+				telegram: telegramFromEnv(),
+				rag,
+				dryRun,
+				log: (line) => process.stderr.write(`${new Date().toISOString()} ${line}\n`),
+			});
+			print(report);
+		};
+		try {
+			if (action === 'run') await once();
+			else {
+				const sec = Number(one('interval-sec') ?? 300);
+				if (!Number.isInteger(sec) || sec < 30 || sec > 86_400) throw new CodeTrailError('USAGE', '--interval-sec must be 30..86400');
+				let stopped = false;
+				process.once('SIGINT', () => (stopped = true));
+				process.once('SIGTERM', () => (stopped = true));
+				while (!stopped) {
+					try {
+						await once();
+					} catch (err) {
+						process.stderr.write(`${new Date().toISOString()} monitor run failed: ${err instanceof CodeTrailError ? err.code : 'error'}\n`);
+					}
+					for (let waited = 0; waited < sec && !stopped; waited++) await new Promise((r) => setTimeout(r, 1000));
+				}
+			}
+		} finally {
+			close();
+		}
+		return 0;
+	}
 	if (group === 'serve' || group === 'explain') {
 		const settings = embeddingSettings();
 		const gen = generationSettings();
-		// The public server is pinned to one project + snapshot; `explain` (operator CLI) may address any indexed project.
-		const pin = group === 'serve' ? parsePublicPin(process.env.CODETRAIL_PUBLIC_PIN) : undefined;
+		// The public server answers for the pinned projects + snapshots only; `explain` (operator CLI) may address any indexed project.
+		const pins = group === 'serve' ? parsePublicPins(process.env.CODETRAIL_PUBLIC_PIN) : undefined;
 		const service = new AnswerService({
 			config,
 			recipe: settings.recipe,
 			embedding: await createEmbeddingProvider(config, settings),
 			generation: createGenerationProvider(gen),
 			limits: gen,
-			serve: pin ? [`${pin.project_id}:${pin.snapshot_id}`] : [],
+			serve: pins ? pins.map((p) => `${p.project_id}:${p.snapshot_id}`) : [],
 			log: (line) => process.stderr.write(`${new Date().toISOString()} ${line}\n`),
 		});
 		const { served, skipped } = service.load();
-		if (pin && !(served.length === 1 && served[0]?.project_id === pin.project_id && served[0].snapshot_id === pin.snapshot_id)) {
+		// A pinned project whose index is unusable shows as Error in the picker; the server starts only if at
+		// least one pinned project is ready, and never serves anything that is not pinned.
+		if (pins && !served.some((p) => pins.some((pin) => pin.project_id === p.project_id && pin.snapshot_id === p.snapshot_id))) {
 			service.close();
-			throw new CodeTrailError('UNKNOWN_SNAPSHOT', `Pinned ${pin.project_id}:${pin.snapshot_id} has no usable index (${skipped.map((s) => s.reason).join(', ') || 'not found'}); refusing to start`);
+			throw new CodeTrailError('UNKNOWN_SNAPSHOT', `No pinned project has a usable index (${skipped.map((s) => `${s.project_id}: ${s.reason}`).join(', ') || 'not found'}); refusing to start`);
 		}
 		if (group === 'explain') {
 			const [projectId, question] = need([action, ...rest].filter((v): v is string => v !== undefined), 2) as [string, string];
@@ -209,7 +282,9 @@ async function main(argv: string[]): Promise<number> {
 		const port = Number(one('port') ?? 8080);
 		if (!Number.isInteger(port) || port < 1 || port > 65535) throw new CodeTrailError('USAGE', '--port must be 1..65535');
 		const server = createHttpServer(service, {
-			...(pin ? { pinned: pin } : {}),
+			...(pins ? { pinned: pins } : {}),
+			catalog: () => projectStatuses(config.dataDir, service.list(), { skipped }),
+			requestsPerMinute: Number(process.env.CODETRAIL_REQUESTS_PER_MINUTE) || 60,
 			trustProxy: process.env.CODETRAIL_TRUST_PROXY === '1',
 			log: (line) => process.stderr.write(`${new Date().toISOString()} ${line}\n`),
 		});

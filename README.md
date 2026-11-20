@@ -4,7 +4,7 @@ CodeTrail is a codebase RAG for TypeScript/JavaScript projects. It answers quest
 
 ## At a glance
 
-- **Public demo scope: GoTrip only.** The server is pinned to one snapshot of the GoTrip frontend and backend (`CODETRAIL_PUBLIC_PIN=gotrip:d75aaec9…`). Requests for any other project or snapshot are refused, and there is no way to upload or connect a repository from the UI. `sindresorhus/ky` is used only as an offline evaluation control corpus.
+- **Served projects are pinned by the operator.** `CODETRAIL_PUBLIC_PIN` lists `project:snapshot` pairs (comma-separated, up to 12). Requests for any other project or snapshot are refused, and there is no way to upload or connect a repository from the UI. The live demo at https://codetrail.gotrips.cloud still runs the earlier GoTrip-only build until it is redeployed. `sindresorhus/ky` is used only as an offline evaluation control corpus.
 - **Local retrieval.** Embeddings (Qwen3-Embedding-0.6B on a local llama.cpp server) and hybrid BM25 + vector search run locally. Plain search never calls an external service.
 - **OpenAI for explanations only.** Pressing **Explain with AI** sends the question and compact excerpts of the retrieved GoTrip chunks (≈12k characters at most) to the OpenAI Responses API with `store: false`; the model is set by configuration, default `gpt-6-luna`.
   - The model may only cite excerpt lines. The server builds every citation (file, lines, commit, exact code) from the snapshot and rejects the whole answer if anything is invalid.
@@ -239,7 +239,7 @@ npm run cli -- explain gotrip "Where does AuthGuard get the token from and how i
   - The model names only an excerpt and a line range. The server copies the cited code, commit and path from the snapshot.
   - The validator is fail-closed. Any unknown excerpt, unshown line, oversized claim, invalid JSON or incomplete response (`max_output_tokens`) rejects the **whole** answer; no partial answer is shown.
   - A citation shows where a claim points, not that the claim is true; the UI says so.
-- **Insufficient evidence.** If the model reports `insufficient_evidence`, or search finds nothing, the response is "Tanlangan loyiha bo‘yicha yetarli dalil topilmadi" plus the sources.
+- **Insufficient evidence.** If the model reports `insufficient_evidence`, or search finds nothing, the response is the fixed EN/KO "not enough evidence in the selected project" text plus the sources.
 - **Fallback.** The local sources are always returned (file, lines, commit, code) together with "AI tushuntirish hozir mavjud emas — kod manbalari" and a reason when any of these happens:
   - no key, a rejected key, exhausted quota or credit, or the provider's rate limit;
   - a timeout or a provider error;
@@ -279,6 +279,27 @@ npm run cli -- explain gotrip "Where does AuthGuard get the token from and how i
     - Search itself is language-neutral. Korean questions can rank GoTrip's Korean locale files first (lexical match); English questions currently retrieve code better.
 - **Not included:** web search, automatic code edits, pull requests and shell execution.
 - **Local generation experiments (archived).** D0, D0b and D0c with Qwen2.5-Coder 1.5B/7B: the 1.5B model gave 0/13 and 0/10 strictly grounded answers, and the 7B run was stopped by the memory guard on the development Mac. The scripts are in `experiments/local-generation/` and the reports in `eval/reports/2026-10-15-d0*`.
+
+## Six projects, chat stream and monitoring
+
+**Projects (feature A).** The picker lists GoTrip, Kervan, Camera Studio, CodeTrail, FindIt and Food Lens (`src/catalog.ts`). Each shows `Ready`, `Indexing` or `Error` (with a stable reason: `NOT_CONFIGURED`, `NOT_INDEXED`, `NOT_SERVED`, `INDEX_FAILED`, `INDEX_INTERRUPTED`, an index error code). Only `Ready` projects can be selected. With several pins every request must carry `project_id`; search, the answer cache, the model input and each in-tab conversation are per project. `codetrail index` writes `data/status/<project>.json` so a running build shows as `Indexing`; a running server picks up a new index after a restart. Python (`.py`) is chunked by a line-based chunker (`src/chunker/python.ts`) so FindIt and Food Lens can be indexed.
+
+**Chat (feature B).** `POST /api/chat` streams server-sent events: `phase` (`searching`, `analyzing`, `thinking`, `streaming`) and then `result`. The answer is generated and validated as a whole before it is shown (fail-closed), so `streaming` is the page revealing an already validated answer, not the model's tokens. Every answer carries an evidence status computed from the server's own checks: `Grounded`, `Partial`, `No Evidence`, or `Sources only` (AI unavailable or rejected: no claim is made). `/api/search` and `/api/explain` are unchanged apart from the added `evidence` field. All three POST routes share a per-client request limit (`CODETRAIL_REQUESTS_PER_MINUTE`, default 60). Behind a proxy the client is the last `X-Forwarded-For` entry.
+
+**Monitoring and Telegram alerts (feature C, CodeTrail only).**
+
+```bash
+# data/monitor.json (git-ignored; see src/monitor/config.ts): health URLs, repo path, log files per project
+TELEGRAM_BOT_TOKEN=… TELEGRAM_CHAT_ID=… npm run cli -- monitor run [--project food-lens] [--dry-run]
+npm run cli -- monitor watch --interval-sec 300
+npm run cli -- monitor status
+```
+
+- **Checks.** `Health Check`: GET with a timeout and one retry; 2xx/3xx is healthy, a slow answer or a 4xx is `Warning`, a 5xx, refused/timed-out/unresolvable connection or TLS failure is `Critical / Down`. `Repo / Log Check`: the repository must have a resolvable HEAD; log files are read only from where the last run stopped (old or stale logs never alert); FATAL-class markers are `Critical / Down`, other error markers `Warning`.
+- **Alerts only for failures.** A healthy project sends nothing, and a project with nothing configured is reported as not configured, never as failing. The message is plain text: `Muammo` / `Ehtimoliy sabab (confidence)` / `Nima qilish kerak`.
+- **Dedup and cool-down.** The same project, source, check, severity and failure class is not sent again for 15 minutes (`Critical`) or 60 minutes (`Warning`); a changed or escalated failure is a new alert; two healthy runs in a row end an incident. Each attempt is logged as `Sent`, `Deduplicated` or `Failed` (`data/monitor/alerts.log.jsonl`, no message text). A failed send (including no credentials) is retried by the next run; a log's unsent errors are read again.
+
+**Root cause (feature D).** For each failure `src/monitor/rootcause.ts` collects evidence: the check result, redacted log lines, commits of the last 72 h (read-only `git log`), the project's own indexed code (the chunk that holds a file and line named in the failure, then BM25 keyword hits) and other failing checks of the same project. Confidence: `High` (direct evidence + two correlations), `Medium` (one), `Low Evidence` (an HTTP status or error log text, nothing correlates), `Unconfirmed` (only a bare timeout/refused/DNS/slow/missing-path failure). The cause is a hypothesis from templates; no model is called. It never changes anything: no commands on servers, no writes to repositories. Everything shown, logged or sent passes `src/monitor/redact.ts` (tokens, passwords, credentials in URLs, dotenv lines, `.env` names, home paths). Redaction is pattern-based and is not a guarantee.
 
 ## Docker
 

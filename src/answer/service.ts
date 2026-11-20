@@ -42,7 +42,7 @@ export function messagesFor(language: Language): { insufficient: string; fallbac
 }
 
 /** Bump when the instructions or the answer schema change, so cached answers are not reused. */
-export const PROMPT_VERSION = 'cited-lines-v5';
+export const PROMPT_VERSION = 'cited-lines-v6';
 
 /** How many earlier questions of a conversation a request may carry (questions only, never answers). */
 export const MAX_PREVIOUS_QUESTIONS = 2;
@@ -112,7 +112,7 @@ export const INSTRUCTIONS = [
 	'If the question is not about this project, or the excerpts show nothing that answers it, reply {"status":"insufficient_evidence","claims":[],"partial":false}.',
 	'Otherwise reply {"status":"answered","claims":[...],"partial":false or true}. The claims are read in order as one short answer:',
 	'usually 2-5 claims; the first answers the question directly, the next ones explain how it works (what the code calls, checks or returns), as far as the excerpts show it.',
-	'Each claim has "text": one plain sentence (at most 240 characters) in the answer language given in the input, without headings or filler;',
+	'Each claim has "text": one plain sentence (at most 200 characters; the server rejects the whole answer above 240) in the answer language given in the input, without headings or filler;',
 	'never translate code, identifiers, file paths or string literals — keep them exactly as in the excerpts;',
 	'"source_id": the excerpt id, like "S2"; "lines": {"start": n, "end": m}, consecutive line numbers shown in that one excerpt (at most 12 lines, never across a "…" gap) that directly support the sentence.',
 	'"partial": true when the excerpts answer only part of the question (for example a called method\'s body is not in the excerpts), otherwise false.',
@@ -159,9 +159,28 @@ export interface AnswerClaim {
 
 export type FallbackReason = GenerationErrorKind | 'unverified' | 'incomplete' | 'client_rate_limit' | 'daily_limit';
 
+/**
+ * How well the answer is supported, derived only from the server's own checks:
+ * - grounded: an answer whose every claim passed citation validation, and the model did not flag it partial;
+ * - partial: validated, but the model says the excerpts cover only part of the question;
+ * - none: search found nothing or the model reported insufficient evidence — no claim is made;
+ * - unverified: only local sources are shown (AI unavailable, rejected or search-only) — no claim is made.
+ * Grounded is not "true": a citation shows where a claim points, not that the claim is correct.
+ */
+export type Evidence = 'grounded' | 'partial' | 'none' | 'unverified';
+
+export function evidenceOf(mode: 'answer' | 'insufficient' | 'fallback', partial: boolean): Evidence {
+	if (mode === 'answer') return partial ? 'partial' : 'grounded';
+	return mode === 'insufficient' ? 'none' : 'unverified';
+}
+
+/** Progress of one explanation, in order. `streaming` (reveal of the validated answer) is added by the HTTP layer. */
+export type Phase = 'searching' | 'analyzing' | 'thinking';
+
 export interface ExplainResponse extends SearchResponse {
 	language: Language;
 	mode: 'answer' | 'insufficient' | 'fallback';
+	evidence: Evidence;
 	message: string | null;
 	reason: FallbackReason | null;
 	claims: AnswerClaim[];
@@ -424,6 +443,13 @@ export class AnswerService {
 		return q;
 	}
 
+	/** Validates a request exactly as `search` would, without searching: throws the same errors (USAGE, UNKNOWN_*, INVALID_QUERY). */
+	check(projectId: unknown, rawQuestion: unknown, snapshotId?: unknown, rawPrevious?: unknown): void {
+		this.state(projectId, snapshotId);
+		AnswerService.question(rawQuestion);
+		parsePreviousQuestions(rawPrevious);
+	}
+
 	/** Local hybrid search in the selected project only. Never calls the generation provider. */
 	async search(projectId: unknown, rawQuestion: unknown, snapshotId?: unknown, rawPrevious?: unknown): Promise<SearchResponse> {
 		const p = this.state(projectId, snapshotId);
@@ -482,14 +508,16 @@ export class AnswerService {
 	 * is given back. Aborting a call already sent only stops waiting for it — the
 	 * provider may still bill it.
 	 */
-	async explain(projectId: unknown, rawQuestion: unknown, client: string, snapshotId?: unknown, signal?: AbortSignal, rawLanguage?: unknown, rawPrevious?: unknown): Promise<ExplainResponse> {
+	async explain(projectId: unknown, rawQuestion: unknown, client: string, snapshotId?: unknown, signal?: AbortSignal, rawLanguage?: unknown, rawPrevious?: unknown, onPhase?: (phase: Phase) => void): Promise<ExplainResponse> {
 		const language = parseLanguage(rawLanguage);
 		const text = messagesFor(language);
+		onPhase?.('searching');
 		const found = await this.search(projectId, rawQuestion, snapshotId, rawPrevious);
 		if (signal?.aborted) throw new RequestCancelledError();
+		onPhase?.('analyzing');
 		const p = this.state(projectId);
-		const base: ExplainResponse = { ...found, language, mode: 'fallback', message: text.fallback, reason: null, claims: [], partial: false, model: null, cached: false, usage: null, context: null };
-		if (found.hits.length === 0) return { ...base, mode: 'insufficient', message: text.insufficient };
+		const base: ExplainResponse = { ...found, language, mode: 'fallback', evidence: 'unverified', message: text.fallback, reason: null, claims: [], partial: false, model: null, cached: false, usage: null, context: null };
+		if (found.hits.length === 0) return { ...base, mode: 'insufficient', evidence: 'none', message: text.insufficient };
 		const provider = this.options.generation;
 		if (!provider) return { ...base, reason: 'not_configured' };
 
@@ -500,7 +528,7 @@ export class AnswerService {
 		if (hit) {
 			this.cache.delete(key);
 			this.cache.set(key, hit); // LRU touch
-			return { ...base, ...hit, reason: null, cached: true };
+			return { ...base, ...hit, evidence: evidenceOf(hit.mode, hit.partial), reason: null, cached: true };
 		}
 
 		const reservation = this.limiter.take(client);
@@ -516,6 +544,7 @@ export class AnswerService {
 			result = await this.gate.run(() => {
 				this.limiter.commit(reservation);
 				started = true;
+				onPhase?.('thinking');
 				return provider.generate({
 					instructions: INSTRUCTIONS,
 					input,
@@ -570,7 +599,7 @@ export class AnswerService {
 			if (this.cache.size >= this.options.limits.cacheSize) this.cache.delete(this.cache.keys().next().value as string);
 			this.cache.set(key, cached);
 		}
-		return { ...base, ...cached, reason: null };
+		return { ...base, ...cached, evidence: evidenceOf(cached.mode, cached.partial), reason: null };
 	}
 
 	/**

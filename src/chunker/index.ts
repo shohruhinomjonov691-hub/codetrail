@@ -1,4 +1,5 @@
 import { chunkStructured, chunkMarkdown } from './text.js';
+import { chunkPython } from './python.js';
 import { chunkTypeScript } from './typescript.js';
 import type { Language, RawChunk } from './types.js';
 
@@ -12,6 +13,7 @@ export function languageOf(path: string): Language | null {
 	if (lower.endsWith('.tsx')) return 'tsx';
 	if (/\.(js|mjs|cjs)$/.test(lower)) return 'javascript';
 	if (lower.endsWith('.jsx')) return 'jsx';
+	if (lower.endsWith('.py')) return 'python';
 	if (lower.endsWith('.json')) return 'json';
 	if (/\.(md|mdx)$/.test(lower)) return 'markdown';
 	if (/\.(yml|yaml)$/.test(lower)) return 'yaml';
@@ -29,6 +31,8 @@ export function chunkFile(path: string, text: string): RawChunk[] {
 		case 'javascript':
 		case 'jsx':
 			return chunkTypeScript(path, text);
+		case 'python':
+			return chunkPython(text);
 		case 'markdown':
 			return chunkMarkdown(text);
 		case 'graphql':

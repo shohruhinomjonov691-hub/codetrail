@@ -213,7 +213,7 @@ describe('answer-quality fix: follow-up fusion, partial answers, diagnostics', (
 	});
 
 	it('the prompt asks for a short explained answer, consecutive cited lines and an honest "missing" note', () => {
-		expect(PROMPT_VERSION).toBe('cited-lines-v5');
+		expect(PROMPT_VERSION).toBe('cited-lines-v6');
 		expect(INSTRUCTIONS).toContain('usually 2-5 claims');
 		expect(INSTRUCTIONS).toContain('never across a "…" gap');
 		expect(INSTRUCTIONS).toContain('"partial": true');

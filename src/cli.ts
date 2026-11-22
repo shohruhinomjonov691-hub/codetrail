@@ -231,8 +231,8 @@ async function main(argv: string[]): Promise<number> {
 				// A dry-run summary goes to stdout and nowhere else.
 				...(report && dryRun ? { onReportMessage: (text: string) => process.stdout.write(`${text}\n\n`) } : {}),
 				log: (line) => process.stderr.write(`${new Date().toISOString()} ${line}\n`),
-				});
-				print(result);
+			});
+			print(result);
 		};
 		try {
 			if (action === 'run') await once();

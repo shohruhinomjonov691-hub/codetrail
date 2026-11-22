@@ -4,7 +4,7 @@ CodeTrail is a codebase RAG for TypeScript/JavaScript projects. It answers quest
 
 ## At a glance
 
-- **Served projects are pinned by the operator.** `CODETRAIL_PUBLIC_PIN` lists `project:snapshot` pairs (comma-separated, up to 12). Requests for any other project or snapshot are refused, and there is no way to upload or connect a repository from the UI. The live demo at https://codetrail.gotrips.cloud still runs the earlier GoTrip-only build until it is redeployed. `sindresorhus/ky` is used only as an offline evaluation control corpus.
+- **Served projects are pinned by the operator.** `CODETRAIL_PUBLIC_PIN` lists `project:snapshot` pairs (comma-separated, up to 12). Requests for any other project or snapshot are refused, and there is no way to upload or connect a repository from the UI. The live demo at https://codetrail.gotrips.cloud serves the six pinned projects (GoTrip, Kervan, Camera Studio, CodeTrail, FindIt, Food Lens), with the key-protected Monitor panel and the daily Telegram report. `sindresorhus/ky` is used only as an offline evaluation control corpus.
 - **Local retrieval.** Embeddings (Qwen3-Embedding-0.6B on a local llama.cpp server) and hybrid BM25 + vector search run locally. Plain search never calls an external service.
 - **OpenAI for explanations only.** Pressing **Explain with AI** sends the question and compact excerpts of the retrieved GoTrip chunks (≈12k characters at most) to the OpenAI Responses API with `store: false`; the model is set by configuration, default `gpt-6-luna`.
   - The model may only cite excerpt lines. The server builds every citation (file, lines, commit, exact code) from the snapshot and rejects the whole answer if anything is invalid.
@@ -15,7 +15,7 @@ CodeTrail is a codebase RAG for TypeScript/JavaScript projects. It answers quest
   - Implemented and tested with mock providers: onboarding and exact-commit snapshots, safety filters and secret scanning, AST chunking, the local index and hybrid search, the HTTP API and UI, grounded OpenAI explanations, and the Docker setup.
   - One real OpenAI request (GoTrip question T4, 2026-10-15) returned a valid two-claim answer whose citations matched the code: 3228 input and 134 output tokens, about $0.0004. A single result is not a quality guarantee.
   - The Docker stack was built and checked in local Docker.
-  - **Live demo:** https://codetrail.gotrips.cloud (GoTrip snapshot only; index built on the server, 2026-10-16). Steps are in `DEPLOY.md`.
+  - **Live demo:** https://codetrail.gotrips.cloud. Six projects, the Monitor panel (key-protected) and a daily Telegram report. Indexes are built on the server (the first, GoTrip-only index on 2026-10-16). The deployment's own `monitor.json` also carries an `incidentpulse-web` health check; that is deployment configuration, not part of this repository. Steps are in `DEPLOY.md`.
 - **Real limitations:**
   - Retrieval misses the 0.80 Recall@8 target on the GoTrip tuning questions: 0.656 by default, 0.688 with the experimental role-slots selection.
   - A citation shows where a claim points, not that the claim is true. The validator checks that every cited line exists in the excerpt the model was shown; it does not check that the sentence is fully supported by those lines, so citation validation is not a guarantee of semantic correctness. The UI asks readers to check the cited code.
